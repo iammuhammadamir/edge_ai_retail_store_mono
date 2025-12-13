@@ -1,6 +1,6 @@
 # Edge Device - Multi-Camera System
 
-> **Last Updated**: December 12, 2025  
+> **Last Updated**: December 13, 2025  
 > **Status**: ✅ Production Ready - Multi-Camera Support  
 > **Backend**: https://dashboard.smoothflow.ai
 
@@ -54,8 +54,8 @@ This is the **edge device component** of the ClientBridge system. It runs on a J
 │                     CLOUD (Vercel + Supabase)                    │
 │                                                                  │
 │  Server compares embedding against all customers:               │
-│  - similarity > 0.45 → RETURNING (increment visits)             │
-│  - similarity < 0.45 → NEW (create customer, save photo)        │
+│  - similarity > 0.50 → RETURNING (increment visits)             │
+│  - similarity < 0.50 → NEW (create customer, save photo)        │
 │                                                                  │
 │  Response: { status: "new"|"returning", customerId, visitCount } │
 │                                                                  │
@@ -71,7 +71,7 @@ This is the **edge device component** of the ClientBridge system. It runs on a J
 | **Edge Device** | NVIDIA Jetson Orin Nano |
 | **Camera** | Tapo C212 (Wi-Fi, 4K, pan/tilt) |
 | **Stream URL** | `rtsp://admin:SmoothFlow@10.0.0.227:554/h264Preview_01_main` |
-| **Processing** | 4K → crop center (50% width, 80% height) → resize to 1280 |
+| **Processing** | 4K → crop center (35% L/R, 10% T, 40% B) → resize to 1280 |
 
 ---
 
@@ -220,11 +220,11 @@ python visitor_counter.py --camera cam_entrance  # Use cameras.yaml
 ## Processing Flow (Detailed)
 
 ### Phase 0: Frame Preprocessing
-- **Center Crop**: 30% left, 30% right, 10% top, 30% bottom
-- Reduces 4K (3840×2160) to center region (1536×1296)
+- **Center Crop**: 35% left, 35% right, 10% top, 40% bottom
+- Reduces 4K (3840×2160) to center region (1152×1080)
 - Benefits:
   - Eliminates edge noise and false positives
-  - Makes faces ~2.5× larger relative to frame (effective zoom)
+  - Makes faces ~3× larger relative to frame (effective zoom)
   - Focuses on entrance area where customers appear
 
 ### Phase 1: Face Detection (~5-10ms)
@@ -246,25 +246,22 @@ python visitor_counter.py --camera cam_entrance  # Use cameras.yaml
   - Below `critical`: **quadratic penalty** (score drops rapidly)
 
 #### Configurable Thresholds (`config.py` → `QUALITY_THRESHOLDS`)
-| Factor | Critical | Good | Notes |
-|--------|----------|------|-------|
-| **Face Size** | 50px | 100px | Pixel width of bounding box |
-| **Sharpness** | 50 | 300 | Laplacian variance |
-| **Brightness** | 30-230 | 80-180 | Mean pixel value (0-255) |
-| **Contrast** | 15 | 50 | Std deviation of pixels |
-| **Frontality (Yaw)** | ±35° | ±15° | Left/right rotation |
-| **Frontality (Pitch)** | ±30° | ±10° | Up/down rotation |
+| Factor | Zero | Critical | Good | Notes |
+|--------|------|----------|------|-------|
+| **Face Size** | 60px | 105px | 105px | Below 60px = score 0, quadratic penalty 60-105px |
+| **Frontality (Yaw)** | - | ±35° | ±15° | Left/right rotation |
+| **Frontality (Pitch)** | - | ±30° | ±10° | Up/down rotation |
 
 #### Importance Weights (0-10 scale)
 - **Frontality (8)**: Critical - angled faces match poorly
-- **Sharpness (6)**: Important - blur hurts recognition
-- **Face Size (3)**: Lower - don't penalize distant faces too harshly
-- **Brightness (4)**: Some tolerance for lighting variation
-- **Contrast (3)**: Lower priority - less critical
+- **Face Size (5)**: Important - small faces are unreliable
+- **Sharpness (0)**: Disabled
+- **Brightness (0)**: Disabled
+- **Contrast (0)**: Disabled
 
 ### Quality Gate 1: Minimum Quality Score
-- **Threshold**: 500/1000
-- If best frame score < 500, skip recognition entirely
+- **Threshold**: 350/1000
+- If best frame score < 350, skip recognition entirely
 - Prevents wasting API calls on poor captures (angled faces, far away, etc.)
 
 ### Phase 4: Embedding Extraction (~50-100ms)
@@ -282,7 +279,7 @@ python visitor_counter.py --camera cam_entrance  # Use cameras.yaml
 - Server compares against all customers
 - Returns: new/returning, customer ID, visit count
 
-### Cooldown (10 seconds)
+### Cooldown (30 seconds)
 - Prevents same person being counted multiple times
 - Resumes scanning after cooldown
 

@@ -431,12 +431,12 @@ def run_visitor_counter(
         return
     
     # Show resolution info with cropping
-    frame_cropped = crop_frame(frame, crop_left=0.30, crop_right=0.30,
-                               crop_top=0.10, crop_bottom=0.30)
+    frame_cropped = crop_frame(frame, crop_left=0.35, crop_right=0.35,
+                               crop_top=0.10, crop_bottom=0.40)
     frame_resized = resize_frame(frame_cropped, target_width)
     h, w = frame_resized.shape[:2]
     logger.info(f"Original resolution: {frame.shape[1]}x{frame.shape[0]}")
-    logger.info(f"After crop (30%L/R, 10%T/30%B): {frame_cropped.shape[1]}x{frame_cropped.shape[0]}")
+    logger.info(f"After crop (35%L/R, 10%T/40%B): {frame_cropped.shape[1]}x{frame_cropped.shape[0]}")
     logger.info(f"Processing resolution: {w}x{h}")
     
     logger.info("\nVisitor counting started. Waiting for faces...")
@@ -481,10 +481,10 @@ def run_visitor_counter(
                 continue
             
             # Crop edges then resize for processing
-            # Crop: 30% left, 30% right, 10% top, 30% bottom
+            # Crop: 35% left, 35% right, 10% top, 40% bottom
             # This focuses on center region and makes faces larger relative to frame
-            frame_cropped = crop_frame(frame, crop_left=0.30, crop_right=0.30, 
-                                       crop_top=0.10, crop_bottom=0.30)
+            frame_cropped = crop_frame(frame, crop_left=0.35, crop_right=0.35, 
+                                       crop_top=0.10, crop_bottom=0.40)
             frame_resized = resize_frame(frame_cropped, target_width)
             
             # =================================================================

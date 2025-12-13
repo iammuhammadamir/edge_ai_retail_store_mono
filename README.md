@@ -37,23 +37,23 @@ A complete system for retail store intelligence including customer recognition, 
 ## Project Structure
 
 ```
-mafi/
-├── ClientBridge/                 # Web application (API + Dashboard)
-│   ├── server/                   # Express.js backend
+zmisc/
+├── server/                       # Web application (API + Dashboard)
+│   ├── api/                      # Vercel serverless functions
 │   ├── client/                   # React frontend
 │   ├── shared/                   # Shared types and schema
-│   └── README.md                 # ClientBridge documentation
+│   └── docs/context.md           # Server documentation
 │
-├── Edge_AI_For_Retail_Stores/    # Edge device code (Jetson/Mac)
+├── client/                       # Edge device code (Jetson/Mac)
 │   ├── visitor_counter.py        # Face recognition worker
 │   ├── main.py                   # Multi-camera entry point
 │   ├── cameras.yaml              # Camera configuration
-│   ├── live_stream.py            # HLS streaming (legacy)
+│   ├── config.py                 # Configuration (thresholds, API settings)
+│   ├── frame_quality.py          # Quality scoring functions
 │   └── docs/context.md           # Edge device documentation
 │
-└── docs/                         # Project-wide documentation
-    ├── Streaming.md              # Live streaming setup guide
-    └── LiveStreamInfo.md         # HLS configuration details
+├── .gitignore                    # Git ignore file
+└── README.md                     # This file
 ```
 
 ## Features
@@ -91,18 +91,18 @@ See [ClientBridge/README.md](ClientBridge/README.md) for full setup.
 
 #### Face Recognition
 ```bash
-cd Edge_AI_For_Retail_Stores
-python -m venv venv && source venv/bin/activate
+cd client
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # Configure cameras.yaml with your RTSP URLs
 nano cameras.yaml
 
 # Run
-python main.py
+python visitor_counter.py
 ```
 
-See [Edge_AI_For_Retail_Stores/docs/context.md](Edge_AI_For_Retail_Stores/docs/context.md) for full setup.
+See [client/docs/context.md](client/docs/context.md) for full setup.
 
 #### Live Streaming
 ```bash
@@ -120,10 +120,8 @@ See [docs/Streaming.md](docs/Streaming.md) for full setup.
 
 | Document | Description |
 |----------|-------------|
-| [ClientBridge/README.md](ClientBridge/README.md) | Web app setup, API endpoints, database schema |
-| [Edge_AI_For_Retail_Stores/docs/context.md](Edge_AI_For_Retail_Stores/docs/context.md) | Face recognition setup, cameras.yaml config |
-| [docs/Streaming.md](docs/Streaming.md) | Live streaming with MediaMTX + Cloudflare |
-| [docs/LiveStreamInfo.md](docs/LiveStreamInfo.md) | HLS latency tuning (legacy Supabase method) |
+| [server/docs/context.md](server/docs/context.md) | Web app setup, API endpoints, database schema |
+| [client/docs/context.md](client/docs/context.md) | Face recognition setup, cameras.yaml config |
 
 ## Tech Stack
 
