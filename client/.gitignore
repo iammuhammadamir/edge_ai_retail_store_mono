@@ -1,0 +1,34 @@
+# Virtual environment
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Models (downloaded at runtime)
+models/
+
+# Database
+*.db
+
+# Debug/output folders
+debug/
+debug_output/
+recordings/
+captures/
+visitor_images/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Zip files
+*.zip
+.vercel

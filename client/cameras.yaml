@@ -1,0 +1,90 @@
+# =============================================================================
+# CAMERA CONFIGURATION
+# =============================================================================
+# This file defines all cameras for this Jetson device.
+# Each camera can be configured for a specific use case with custom settings.
+#
+# Use Cases:
+#   - face_recognition: Customer loyalty tracking (heavy processing)
+#   - live_stream: Real-time video streaming to dashboard (light processing)
+#
+# To add a new camera, copy an existing entry and modify the values.
+# =============================================================================
+
+# Location this device belongs to (must match location_id in database)
+location:
+  id: 1
+  name: "Store Downtown"
+
+# API Configuration
+api:
+  base_url: "https://dashboard.smoothflow.ai"
+  key: "dev-edge-api-key"
+
+# Camera definitions
+cameras:
+  # -----------------------------------------------------------------------------
+  # Face Recognition Camera (Entrance)
+  # -----------------------------------------------------------------------------
+  - id: "cam_entrance"
+    name: "Entrance Camera"
+    rtsp_url: "rtsp://admin:SmoothFlow@10.0.0.227:554/h264Preview_01_main"
+    use_case: "face_recognition"
+    enabled: true
+    
+    # Face recognition specific settings
+    settings:
+      # Processing
+      target_width: 1280              # Resize frames to this width
+      process_every_n_frames: 5       # Skip frames for performance
+      
+      # Quality capture
+      quality_capture_duration: 5.0   # Seconds to capture after face detected
+      quality_frame_skip: 3           # Keep every Nth frame during capture
+      
+      # Recognition
+      similarity_threshold: 0.45      # Cosine similarity for matching
+      cooldown_seconds: 10            # Wait time before next detection
+      
+      # Quality gates
+      min_quality_score: 350          # Minimum quality to proceed (out of 1000)
+      min_detection_score: 0.70       # Minimum InsightFace confidence
+
+  # -----------------------------------------------------------------------------
+  # Live Stream Camera (Floor) - HLS Streaming
+  # -----------------------------------------------------------------------------
+  # For local testing with MediaMTX + USB cameras on Mac:
+  #   rtsp://localhost:8554/cam1  (H264 USB Camera)
+  #   rtsp://localhost:8554/cam2  (UVC Camera)
+  #
+  - id: "cam_floor"
+    name: "Floor Camera (USB)"
+    rtsp_url: "rtsp://localhost:8554/cam1"
+    use_case: "live_stream"
+    enabled: true
+    
+    # HLS streaming settings
+    settings:
+      target_width: 640             # 360p width (640x360) - lower quality, faster uploads
+      target_fps: 12                # Lower FPS for smaller segments
+      segment_duration: 2           # Seconds per HLS segment
+      segments_to_keep: 5           # Rolling window
+      crf: 28                       # Quality (higher = lower quality, smaller files)
+
+# =============================================================================
+# EXAMPLE: Adding a second face recognition camera
+# =============================================================================
+# - id: "cam_exit"
+#   name: "Exit Camera"
+#   rtsp_url: "rtsp://admin:password@10.0.0.229:554/stream1"
+#   use_case: "face_recognition"
+#   enabled: false
+#   settings:
+#     target_width: 1280
+#     process_every_n_frames: 5
+#     quality_capture_duration: 5.0
+#     quality_frame_skip: 3
+#     similarity_threshold: 0.45
+#     cooldown_seconds: 10
+#     min_quality_score: 350
+#     min_detection_score: 0.70

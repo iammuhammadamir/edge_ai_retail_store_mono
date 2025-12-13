@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Local config (if any)
+.env
+.env.local
+*.local
+
+# Model files (large)
+*.onnx
+models/
+
+# InsightFace cache
+.insightface/
+
+# Test outputs
+client/adjust_thresholds/output/
+client/GPU_testing/test_face.jpg
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Byte-compiled / optimized
+*.pyc
+*.pyo

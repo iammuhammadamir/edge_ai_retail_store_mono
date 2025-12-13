@@ -1,0 +1,49 @@
+Project: GasStation AI Security — Prototype (Replit)
+
+Goal:
+Create a full-stack prototype that ingests motion-sensor video clips, allows human labelers to tag clips into three levels (Regular, Suspect, Confirmed Theft), routes labeled clips to store management for review, and sends confirmed/annotated clips to a YOLO training pipeline. Use an architecture that is simple to run entirely inside Replit for prototype purposes.
+
+Tech stack (recommended for prototype):
+- Backend: Python FastAPI
+- Frontend: React (Vite) single-page app
+- Video handling: store uploaded video clips in /data folder (or Replit persistent storage). Serve via HTTP.
+- DB: SQLite (for prototyping)
+- AI: Integration hooks to run YOLOv8 training script locally (mock training step is fine). Provide endpoints to send annotated data to the YOLO pipeline.
+- Optional: WebSocket for real-time labeling updates.
+
+Key features:
+1. Upload/play video clip (motion-triggered short clips) from browser.
+2. Labeling UI: three buttons/tags — Regular, Suspect, Confirmed Theft. Each label stores: clip_id, label, labeler_id, timestamp, optional bounding box annotations (draw boxes on video frames).
+3. Routing: After labeling:
+   - All labeled clips are recorded in DB.
+   - If label == "Confirmed Theft" => notify Store Management (push to a review queue endpoint) AND copy/flag clip for YOLO training dataset.
+   - If label == "Suspect" => put in management review queue.
+4. YOLO integration:
+   - Provide an endpoint `/yolo/ingest` that converts labeled clips + bounding boxes into YOLO-format images + .txt label files and stores them in `/yolo_dataset`.
+   - Provide a button in UI to "Start YOLO Train" that triggers a mock training job and returns status/progress.
+5. Admin / Store Management view:
+   - Show pending reviews, allow manager to confirm/reject labels, add comments.
+6. Authentication: simple mock login (username only) for labeler vs manager for the prototype.
+
+Deliverables (in Replit):
+- Working frontend at root that can:
+  - List video clips
+  - Play video in browser
+  - Open labeling panel and draw bounding boxes (use a lightweight canvas library)
+  - Trigger YOLO ingest
+- FastAPI backend with endpoints:
+  - `POST /upload_clip`
+  - `GET /clips`
+  - `GET /clips/{id}`
+  - `POST /clips/{id}/label`
+  - `GET /review_queue`
+  - `POST /yolo/ingest`
+  - `POST /yolo/train` (mock)
+- README with run instructions and a sample dataset (3 small sample clips).
+
+Edge cases & notes:
+- Keep file sizes small — use 3–10s demo clips.
+- Include CORS config for local dev.
+- Provide simple unit tests for backend endpoints.
+
+Please scaffold the project, include working example code for key flows (upload, play, label, route to YOLO ingest), and comment where production-grade enhancements would be needed (security, persistent storage like S3, real YOLO training).

@@ -1,0 +1,219 @@
+
+Here’s a focused, step‑by‑step plan plus the key code you can drop in to add multi‑location and an Owner admin panel, aligned with your current code.
+
+High-level
+
+Add tables: locations, cameras. Add locationId FKs to clips, customers, inventory (and optionally users).
+Scope every list/create API by locationId. Gate admin routes with ownerOnly middleware.
+Frontend: LocationContext + header dropdown; include locationId in all queries. Admin page with Users, Locations, Cameras.
+Cameras: fetch by location and surface as an extra “feed” alongside clips in Dashboard’s filteredClips.map.
+Shared schema
+Add Locations and Cameras; add locationId to existing entities.
+// filepath: schema.ts
+// ...existing code...
+import { z } from "zod";
+
+export const locationSchema = z.object({
+id: z.number().int(),
+name: z.string(),
+address: z.string().optional().nullable(),
+timezone: z.string().optional().nullable(),
+createdAt: z.date(),
+});
+export type Location = z.infer<typeof locationSchema>;
+
+export const cameraSchema = z.object({
+id: z.number().int(),
+name: z.string(),
+rtspUrl: z.string(),
+locationId: z.number().int(),
+createdAt: z.date(),
+});
+export type Camera = z.infer<typeof cameraSchema>;
+
+// Add locationId to existing types
+export type VideoClip = {
+// ...existing code...
+locationId: number;
+cameraId?: number | null;
+};
+
+export type Customer = {
+// ...existing code...
+locationId: number;
+};
+
+export type InventoryItem = {
+// ...existing code...
+locationId: number;
+};
+// ...existing code...
+
+Run a migration to:
+
+create table locations(id, name, address, timezone)
+create table cameras(id, name, rtspUrl, locationId FK)
+add locationId FKs to clips, customers, inventory; backfill with a default location then set NOT NULL
+Storage
+Add filtered queries and CRUD for locations/cameras.
+// filepath: dbStorage.ts
+// ...existing code...
+export class DatabaseStorage {
+// ...existing code...
+
+async getLocations(): Promise<Location[]> { /* select * from locations / }
+async createLocation(input: { name: string; address?: string | null; timezone?: string | null }): Promise<Location> { / insert / }
+async updateLocation(id: number, updates: Partial<Location>): Promise<Location> { / update / }
+async deleteLocation(id: number): Promise<void> { / delete with FK safety */ }
+
+async getCamerasByLocation(locationId: number): Promise<Camera[]> { /* select * from cameras where locationId=? / }
+async createCamera(input: { name: string; rtspUrl: string; locationId: number}): Promise<Camera> { / insert / }
+async updateCamera(id: number, updates: Partial<Camera>): Promise<Camera> { / update / }
+async deleteCamera(id: number): Promise<void> { / delete */ }
+
+async getClips(locationId?: number): Promise<VideoClip[]> {
+// select * from videoClips where (locationId = ? if provided) order by uploadedAt desc
+}
+
+async getCustomers(locationId?: number): Promise<Customer[]> { /* filter by locationId when provided / }
+async getInventory(locationId?: number): Promise<InventoryItem[]> { / filter by locationId when provided */ }
+
+// Ensure create/update methods for clips/customers/inventory require a locationId
+}
+// ...existing code...
+
+Routes
+Accept locationId on list endpoints.
+Add ownerOnly middleware and admin namespaces.
+// filepath: routes.ts
+// ...existing code...
+function ownerOnly(req: any, res: any, next: any) {
+// Assuming req.user is set by your auth; adapt to your auth
+if (!req.user || req.user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
+next();
+}
+
+export function registerRoutes(app: any, storage: DatabaseStorage) {
+// LIST endpoints with optional locationId
+app.get("/api/clips", async (req, res) => {
+const locationId = req.query.locationId ? Number(req.query.locationId) : undefined;
+const data = await storage.getClips(locationId);
+res.json(data);
+});
+
+app.get("/api/customers", async (req, res) => {
+const locationId = req.query.locationId ? Number(req.query.locationId) : undefined;
+res.json(await storage.getCustomers(locationId));
+});
+
+app.get("/api/inventory", async (req, res) => {
+const locationId = req.query.locationId ? Number(req.query.locationId) : undefined;
+res.json(await storage.getInventory(locationId));
+});
+
+// Enforce locationId on create
+app.post("/api/inventory", async (req, res) => {
+const { locationId } = req.body;
+if (!locationId) return res.status(400).json({ error: "locationId required" });
+// ...existing code...
+});
+// Repeat for clips/customers creation endpoints
+
+// Locations CRUD
+app.get("/api/locations", async (_req, res) => res.json(await storage.getLocations()));
+app.post("/api/locations", ownerOnly, async (req, res) => res.json(await storage.createLocation(req.body)));
+app.patch("/api/locations/:id", ownerOnly, async (req, res) => res.json(await storage.updateLocation(Number(req.params.id), req.body)));
+app.delete("/api/locations/:id", ownerOnly, async (req, res) => { await storage.deleteLocation(Number(req.params.id)); res.status(204).end(); });
+
+// Cameras CRUD
+app.get("/api/cameras", async (req, res) => {
+const locationId = Number(req.query.locationId);
+if (!locationId) return res.json([]);
+res.json(await storage.getCamerasByLocation(locationId));
+});
+app.post("/api/cameras", ownerOnly, async (req, res) => res.json(await storage.createCamera(req.body)));
+app.patch("/api/cameras/:id", ownerOnly, async (req, res) => res.json(await storage.updateCamera(Number(req.params.id), req.body)));
+app.delete("/api/cameras/:id", ownerOnly, async (req, res) => { await storage.deleteCamera(Number(req.params.id)); res.status(204).end(); });
+
+// Admin users (owner only)
+app.get("/api/admin/users", ownerOnly, async (_req, res) => {
+// return all users with allowed locationIds (single or array)
+});
+app.post("/api/admin/users", ownerOnly, async (req, res) => {
+// create user with role: "owner" | "manager" | "reviewer" and allowed locationId(s)
+});
+app.patch("/api/admin/users/:id", ownerOnly, async (req, res) => { /* update / });
+app.delete("/api/admin/users/:id", ownerOnly, async (req, res) => { / delete */ });
+}
+// ...existing code...
+
+Seeding
+Seed two stores and sample cameras, then backfill locationId on existing rows.
+// filepath: dbStorage.ts
+// ...existing code...
+export async function seedDatabase(storage: DatabaseStorage) {
+// 1) Insert locations if none
+const existing = await storage.getLocations();
+if (existing.length === 0) {
+const main = await storage.createLocation({ name: "Main St Store", address: "123 Main St", timezone: "America/New_York" });
+const airport = await storage.createLocation({ name: "Airport Store", address: "1 Terminal Way", timezone: "America/New_York" });
+
+}
+// ...existing demo seeds should now include a locationId and optional cameraId...
+}
+// ...existing code...
+
+Location context + dropdown
+A simple context to hold selected location and refetch on change.
+// filepath: /Users/macos/Desktop/mine/ClientBridge/client/src/contexts/LocationContext.tsx
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { Location } from "@shared/schema";
+
+type Ctx = {
+locations: Location[];
+locationId: number | null;
+setLocationId: (id: number) => void;
+};
+const LocationContext = createContext<Ctx>({ locations: [], locationId: null, setLocationId: () => {} });
+
+export function LocationProvider({ children }: { children: React.ReactNode }) {
+const { data: locations = [] } = useQuery<Location[]>({
+queryKey: ["/api/locations"],
+});
+const [locationId, setLocationIdState] = useState<number | null>(null);
+
+useEffect(() => {
+const saved = sessionStorage.getItem("locationId");
+if (saved) setLocationIdState(Number(saved));
+}, []);
+useEffect(() => {
+if (!locationId && locations.length) setLocationIdState(locations[0].id);
+}, [locations, locationId]);
+
+const setLocationId = (id: number) => {
+setLocationIdState(id);
+sessionStorage.setItem("locationId", String(id));
+};
+
+const value = useMemo(() => ({ locations, locationId, setLocationId }), [locations, locationId]);
+return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
+}
+
+export const useLocationCtx = () => useContext(LocationContext);
+
+Wrap your app with LocationProvider (e.g., in App.tsx or main.tsx).
+
+Dashboard: add dropdown, scope queries, show cameras in the feed
+Header: add dropdown to choose location.
+Queries: pass locationId to clips/customers/reviews/inventory.
+Cameras: fetch and inject as extra “feed” items into filteredClips.map.
+Admin page (Owner-only)
+Skeleton with tabs to manage Users, Locations, Cameras. Protect with role === "owner".
+Add a link to Admin for owners (e.g., a button in the header) and route it in your client router.
+
+Notes
+
+Browsers can’t play RTSP. For real cameras, proxy RTSP→HLS/MP4 on the server and use that URL in rtspUrl (rename to streamUrl if you like).
+Ensure your auth attaches req.user.role and allowed locationIds. For Managers/Reviewers, fix the location dropdown to their single allowed location and prevent switching.

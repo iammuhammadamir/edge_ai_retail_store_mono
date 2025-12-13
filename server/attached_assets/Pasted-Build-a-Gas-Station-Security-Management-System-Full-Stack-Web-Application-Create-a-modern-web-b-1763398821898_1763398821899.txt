@@ -1,0 +1,39 @@
+Build a Gas Station Security Management System - Full-Stack Web Application
+
+Create a modern web-based security management system for gas stations with two main features:
+
+Feature 1: Video Clip Review System
+Display security camera video clips (10-second clips from gas station cameras)
+Each clip has 3 classification buttons:
+"Suspect" - needs further review
+"Confirm Theft" - verified shoplifting incident
+"Clear" - false alarm, no issue
+Video clips will be automatically sent from cameras to the system (simulate with upload endpoint for now)
+Show status badges on each clip (Pending/Suspect/Confirmed/Clear)
+Feature 2: Customer Recognition & Points System
+Use facial recognition AI (AWS Rekognition or similar service) to identify people in video clips
+Automatically track customer visits with point system:
+Each time a customer appears on camera = +1 point
+Display total points for each customer
+Badge system: "New Customer" (less than 5 points) vs "Regular Customer" (5+ points)
+Show customer profile: name, total points, first seen date, last seen date
+Live customer feed showing recently recognized visitors
+User Roles (Different Dashboards):
+Gas Station Manager - Can review clips and mark them (Suspect/Confirm/Clear)
+AI Trainer - Same as Manager PLUS additional controls for managing training data, bulk actions, advanced filters
+Technical Requirements:
+Full-stack JavaScript application
+React frontend with clean, modern UI
+Express/Node.js backend
+PostgreSQL database with tables:
+video_clips - stores clip metadata, status, face detections
+customers - face_id, name, points, visit tracking
+reviews - manager decisions on clips
+Role-based authentication (Manager vs AI Trainer)
+Include 5-6 sample 10-second video clips for demonstration
+Important Notes:
+Design the upload endpoint to receive clips from camera systems automatically
+Keep accumulating customer points indefinitely (no limit)
+Build both features simultaneously
+Use real facial recognition API (will provide API key separately)
+Build a complete working prototype with sample data included.

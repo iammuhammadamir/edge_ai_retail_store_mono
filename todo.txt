@@ -1,0 +1,2 @@
+security vulnerability from vercel mail
+confirm if the current setup is secure

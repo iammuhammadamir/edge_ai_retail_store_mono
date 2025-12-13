@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "client/dist",
+  "functions": {
+    "api/**/*.ts": {
+      "memory": 256,
+      "maxDuration": 10
+    }
+  },
+  "rewrites": [
+    { "source": "/health", "destination": "/api/edge/health" },
+    { "source": "/api/customers/:path*", "destination": "/api/customers" },
+    { "source": "/api/cameras/:path*", "destination": "/api/cameras" },
+    { "source": "/api/inventory/:path*", "destination": "/api/inventory" },
+    { "source": "/api/admin/:path*", "destination": "/api/admin" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}
