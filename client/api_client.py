@@ -65,30 +65,23 @@ class ClientBridgeAPI:
             "X-API-Key": self.api_key
         }
     
-    def _crop_face(self, frame: np.ndarray, padding: float = 0.4) -> np.ndarray:
+    def _crop_face_with_bbox(self, frame: np.ndarray, bbox: tuple, padding: float = 0.5) -> np.ndarray:
         """
-        Crop frame to face region with padding.
+        Crop frame to face region using provided bounding box.
         
         Args:
             frame: Full frame image
-            padding: Extra padding around face (0.4 = 40% on each side)
+            bbox: (x1, y1, x2, y2) bounding box from face detection
+            padding: Extra padding around face (0.5 = 50% on each side)
         
         Returns:
-            Cropped face image, or original frame if no face detected
+            Cropped face image
         """
         try:
-            # Use OpenCV's Haar cascade for quick face detection
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            face_cascade = cv2.CascadeClassifier(
-                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            )
-            faces = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(60, 60))
-            
-            if len(faces) == 0:
-                return frame  # No face found, return original
-            
-            # Get largest face
-            x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+            # Convert to integers (InsightFace returns floats)
+            x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
+            w = x2 - x1
+            h = y2 - y1
             
             # Add padding
             pad_w = int(w * padding)
@@ -96,12 +89,12 @@ class ClientBridgeAPI:
             
             # Calculate crop bounds with padding
             img_h, img_w = frame.shape[:2]
-            x1 = max(0, x - pad_w)
-            y1 = max(0, y - pad_h)
-            x2 = min(img_w, x + w + pad_w)
-            y2 = min(img_h, y + h + pad_h)
+            crop_x1 = max(0, x1 - pad_w)
+            crop_y1 = max(0, y1 - pad_h)
+            crop_x2 = min(img_w, x2 + pad_w)
+            crop_y2 = min(img_h, y2 + pad_h)
             
-            cropped = frame[y1:y2, x1:x2]
+            cropped = frame[crop_y1:crop_y2, crop_x1:crop_x2]
             
             # Resize to reasonable size for storage (max 400px wide)
             if cropped.shape[1] > 400:
@@ -115,10 +108,16 @@ class ClientBridgeAPI:
             print(f"[API] Face crop failed: {e}")
             return frame
     
-    def _frame_to_base64(self, frame: np.ndarray, crop_face: bool = True) -> str:
-        """Convert OpenCV frame to base64 JPEG string, optionally cropping to face"""
-        if crop_face:
-            frame = self._crop_face(frame)
+    def _frame_to_base64(self, frame: np.ndarray, bbox: tuple = None) -> str:
+        """
+        Convert OpenCV frame to base64 JPEG string, optionally cropping to face.
+        
+        Args:
+            frame: Full frame image
+            bbox: (x1, y1, x2, y2) bounding box for face crop. If None, sends full frame.
+        """
+        if bbox is not None:
+            frame = self._crop_face_with_bbox(frame, bbox)
         _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
         return base64.b64encode(buffer).decode('utf-8')
     
@@ -249,7 +248,8 @@ class ClientBridgeAPI:
     def identify(
         self,
         embedding: np.ndarray,
-        frame: Optional[np.ndarray] = None
+        frame: Optional[np.ndarray] = None,
+        bbox: tuple = None
     ) -> APIResponse:
         """
         Send embedding to server for identification.
@@ -260,6 +260,7 @@ class ClientBridgeAPI:
         Args:
             embedding: 512-dimensional face embedding from InsightFace
             frame: Best frame of the visitor's face (optional, for photo storage)
+            bbox: (x1, y1, x2, y2) bounding box for face crop (from InsightFace detection)
             
         Returns:
             APIResponse with:
@@ -275,7 +276,7 @@ class ClientBridgeAPI:
             }
             
             if frame is not None:
-                payload["imageBase64"] = self._frame_to_base64(frame)
+                payload["imageBase64"] = self._frame_to_base64(frame, bbox)
             
             response = requests.post(
                 f"{self.base_url}/api/edge/identify",

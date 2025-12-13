@@ -228,15 +228,72 @@ def draw_face_box(image: np.ndarray, bbox: Tuple[int, int, int, int], score: flo
     return img
 
 
+def draw_face_box_detailed(image: np.ndarray, bbox: Tuple[int, int, int, int], 
+                           score: QualityScore, det_score: float = None) -> np.ndarray:
+    """
+    Draw detailed face bounding box with landmarks and metrics overlay.
+    """
+    img = image.copy()
+    x1, y1, x2, y2 = bbox
+    face_w = x2 - x1
+    face_h = y2 - y1
+    
+    # Color based on quality score
+    if score.total >= cfg.MIN_QUALITY_SCORE:
+        color = (0, 255, 0)  # Green - pass
+    elif score.total >= cfg.MIN_QUALITY_SCORE * 0.7:
+        color = (0, 255, 255)  # Yellow - marginal
+    else:
+        color = (0, 0, 255)  # Red - fail
+    
+    # Draw bounding box
+    cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+    
+    # Draw face dimensions
+    cv2.putText(img, f"{face_w}x{face_h}px", (x1, y2 + 20), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+    
+    # Draw quality score above box
+    label = f"Q:{score.total:.0f}"
+    if det_score is not None:
+        label += f" D:{det_score:.2f}"
+    cv2.putText(img, label, (x1, y1 - 10), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    
+    # Draw yaw/pitch indicator (arrow showing head direction)
+    center_x = (x1 + x2) // 2
+    center_y = (y1 + y2) // 2
+    arrow_len = min(face_w, face_h) // 3
+    
+    # Yaw affects X, pitch affects Y
+    import math
+    end_x = int(center_x + arrow_len * math.sin(math.radians(score.yaw)))
+    end_y = int(center_y + arrow_len * math.sin(math.radians(score.pitch)))
+    cv2.arrowedLine(img, (center_x, center_y), (end_x, end_y), (255, 0, 255), 2)
+    
+    return img
+
+
 def generate_debug_report(
     capture: PersonCapture,
     scored_frames: List[Tuple[int, np.ndarray, QualityScore]],
     best_score: QualityScore,
     visitor_result: str,
-    visitor_id: int
+    visitor_id: int,
+    det_score: float = None,
+    api_sent: bool = False
 ) -> None:
     """
     Generate debug.md report with top frames and scores.
+    
+    Args:
+        capture: PersonCapture with frames
+        scored_frames: List of (frame_idx, frame, QualityScore)
+        best_score: QualityScore of best frame
+        visitor_result: Result string (NEW, RETURNING, LOW_QUALITY, etc.)
+        visitor_id: Visitor ID if identified
+        det_score: InsightFace detection confidence (if available)
+        api_sent: Whether this frame was sent to the API
     """
     if not cfg.DEBUG_MODE or not cfg.DEBUG_GENERATE_REPORT:
         return
@@ -245,49 +302,99 @@ def generate_debug_report(
     
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
+    # Determine if this passed all quality gates
+    passed_quality = best_score.total >= cfg.MIN_QUALITY_SCORE
+    passed_detection = det_score is None or det_score >= cfg.MIN_DETECTION_SCORE
+    
+    # Status badge
+    if api_sent:
+        status_badge = "🟢 **SENT TO API**"
+    elif not passed_quality:
+        status_badge = "🔴 **REJECTED: Low Quality Score**"
+    elif not passed_detection:
+        status_badge = "🔴 **REJECTED: Low Detection Confidence**"
+    else:
+        status_badge = "⚪ **NOT SENT**"
+    
+    # Get face dimensions from bbox
+    x1, y1, x2, y2 = best_score.bbox
+    face_width = x2 - x1
+    face_height = y2 - y1
+    
     md = f"""# Frame Quality Debug Report
+
+{status_badge}
 
 **Generated**: {timestamp}  
 **Session ID**: {capture.session_id}  
-**Total Frames Captured**: {len(capture.frames)}  
-**Frames with Faces**: {len(scored_frames)}  
 **Result**: {visitor_result} (Visitor #{visitor_id})
 
 ---
 
-## Best Frame Selected
+## Decision Summary
+
+| Gate | Value | Threshold | Status |
+|------|-------|-----------|--------|
+| Quality Score | **{best_score.total:.0f}** | ≥ {cfg.MIN_QUALITY_SCORE:.0f} | {'✅ PASS' if passed_quality else '❌ FAIL'} |
+| Detection Confidence | **{f'{det_score:.3f}' if det_score is not None else 'N/A'}** | ≥ {cfg.MIN_DETECTION_SCORE:.2f} | {'✅ PASS' if passed_detection else '❌ FAIL'} |
+
+---
+
+## Frame Statistics
+
+| Metric | Value |
+|--------|-------|
+| Total Frames Captured | {len(capture.frames)} |
+| Frames with Faces | {len(scored_frames)} |
+| Face Bounding Box | ({x1}, {y1}) to ({x2}, {y2}) |
+| Face Dimensions | {face_width} x {face_height} px |
+
+---
+
+## Quality Score Breakdown
 
 **Total Score: {best_score.total:.0f}/1000** (Threshold: {cfg.MIN_QUALITY_SCORE:.0f})
 
-| Metric | Value | Importance | Description |
-|--------|-------|------------|-------------|  
-| Frontality | {best_score.frontality:.2f} | {cfg.QUALITY_IMPORTANCE.get('frontality', 8)} | Yaw: {best_score.yaw:.1f}°, Pitch: {best_score.pitch:.1f}° |
-| Sharpness | {best_score.sharpness:.2f} | {cfg.QUALITY_IMPORTANCE.get('sharpness', 6)} | Laplacian variance |
-| Face Size | {best_score.face_size:.2f} | {cfg.QUALITY_IMPORTANCE.get('face_size', 5)} | Relative to frame |
-| Brightness | {best_score.brightness:.2f} | {cfg.QUALITY_IMPORTANCE.get('brightness', 4)} | Face ROI mean |
-| Contrast | {best_score.contrast:.2f} | {cfg.QUALITY_IMPORTANCE.get('contrast', 3)} | Face ROI std dev |
+| Metric | Raw Value | Score (0-1) | Importance | Contribution |
+|--------|-----------|-------------|------------|-------------|
+| **Frontality** | Yaw: {best_score.yaw:.1f}°, Pitch: {best_score.pitch:.1f}° | {best_score.frontality:.3f} | {cfg.QUALITY_IMPORTANCE.get('frontality', 8)} | {(best_score.frontality ** (cfg.QUALITY_IMPORTANCE.get('frontality', 8) / 5.0)):.3f} |
+| **Face Size** | {face_width}px width | {best_score.face_size:.3f} | {cfg.QUALITY_IMPORTANCE.get('face_size', 5)} | {(best_score.face_size ** (cfg.QUALITY_IMPORTANCE.get('face_size', 5) / 5.0)):.3f} |
+| **Sharpness** | Laplacian var | {best_score.sharpness:.3f} | {cfg.QUALITY_IMPORTANCE.get('sharpness', 0)} | {(best_score.sharpness ** (cfg.QUALITY_IMPORTANCE.get('sharpness', 0) / 5.0)) if cfg.QUALITY_IMPORTANCE.get('sharpness', 0) > 0 else 1.0:.3f} |
+| **Brightness** | Face ROI mean | {best_score.brightness:.3f} | {cfg.QUALITY_IMPORTANCE.get('brightness', 0)} | {(best_score.brightness ** (cfg.QUALITY_IMPORTANCE.get('brightness', 0) / 5.0)) if cfg.QUALITY_IMPORTANCE.get('brightness', 0) > 0 else 1.0:.3f} |
+| **Contrast** | Face ROI std | {best_score.contrast:.3f} | {cfg.QUALITY_IMPORTANCE.get('contrast', 0)} | {(best_score.contrast ** (cfg.QUALITY_IMPORTANCE.get('contrast', 0) / 5.0)) if cfg.QUALITY_IMPORTANCE.get('contrast', 0) > 0 else 1.0:.3f} |
 
-*Scoring: score = 1000 × factor^(importance/5) for each factor*
+*Formula: total = 1000 × Π(score^(importance/5)) for each metric with importance > 0*
 
 ---
 
-## Top {cfg.QUALITY_TOP_N_FRAMES} Frames
+## Threshold Configuration (from config.py)
+
+```
+Face Size:
+  zero_px: {cfg.QUALITY_THRESHOLDS.get('face_size', {}).get('zero_px', 60)} (below = score 0)
+  critical_px: {cfg.QUALITY_THRESHOLDS.get('face_size', {}).get('critical_px', 105)}
+  good_px: {cfg.QUALITY_THRESHOLDS.get('face_size', {}).get('good_px', 105)} (above = score 1.0)
+
+Frontality:
+  good_yaw: ±{cfg.QUALITY_THRESHOLDS.get('frontality', {}).get('good_yaw', 15)}° (within = score 1.0)
+  critical_yaw: ±{cfg.QUALITY_THRESHOLDS.get('frontality', {}).get('critical_yaw', 35)}°
+  good_pitch: ±{cfg.QUALITY_THRESHOLDS.get('frontality', {}).get('good_pitch', 10)}°
+  critical_pitch: ±{cfg.QUALITY_THRESHOLDS.get('frontality', {}).get('critical_pitch', 30)}°
+```
+
+---
+
+## Best Frame (Sent to API)
 
 """
     
-    for rank, (frame_idx, frame, score) in enumerate(scored_frames[:cfg.QUALITY_TOP_N_FRAMES], 1):
-        annotated = draw_face_box(frame, score.bbox, score.total)
-        b64_img = image_to_base64(annotated)
-        
-        md += f"""### Rank #{rank} (Frame {frame_idx})
-
-**Score: {score.total:.0f}/1000** | Frontal: {score.frontality:.2f} | Sharp: {score.sharpness:.2f} | Size: {score.face_size:.2f} | Yaw: {score.yaw:.1f}°
-
-![Frame {frame_idx}]({b64_img})
-
----
-
-"""
+    # Add best frame with detailed visualization
+    if scored_frames:
+        best_frame = scored_frames[0][1]
+        annotated = draw_face_box_detailed(best_frame, best_score.bbox, best_score, det_score)
+        b64_img = image_to_base64(annotated, max_width=600)
+        md += f"![Best Frame]({b64_img})\n\n"
+    
     
     # Save report
     report_path = os.path.join(cfg.DEBUG_OUTPUT_DIR, f"debug_{capture.session_id}.md")
@@ -299,7 +406,7 @@ def generate_debug_report(
     # Also save best frame as image
     if cfg.DEBUG_SAVE_TOP_FRAMES and scored_frames:
         best_frame = scored_frames[0][1]
-        best_annotated = draw_face_box(best_frame, best_score.bbox, best_score.total)
+        best_annotated = draw_face_box_detailed(best_frame, best_score.bbox, best_score, det_score)
         best_path = os.path.join(cfg.DEBUG_OUTPUT_DIR, f"best_{capture.session_id}.jpg")
         cv2.imwrite(best_path, best_annotated)
         logger.debug(f"Best frame saved: {best_path}")
@@ -545,7 +652,9 @@ def run_visitor_counter(
                         scored_frames=scored_frames,
                         best_score=best_score,
                         visitor_result="LOW_QUALITY",
-                        visitor_id=0
+                        visitor_id=0,
+                        det_score=None,
+                        api_sent=False
                     )
                 
                 last_capture_time = time.time()
@@ -569,7 +678,9 @@ def run_visitor_counter(
                         scored_frames=scored_frames,
                         best_score=best_score,
                         visitor_result="NO_FACE",
-                        visitor_id=0
+                        visitor_id=0,
+                        det_score=None,
+                        api_sent=False
                     )
                 
                 last_capture_time = time.time()
@@ -591,7 +702,9 @@ def run_visitor_counter(
                         scored_frames=scored_frames,
                         best_score=best_score,
                         visitor_result=f"LOW_CONFIDENCE ({det_score:.2f})",
-                        visitor_id=0
+                        visitor_id=0,
+                        det_score=det_score,
+                        api_sent=False
                     )
                 
                 last_capture_time = time.time()
@@ -602,7 +715,7 @@ def run_visitor_counter(
             # =================================================================
             # Server performs matching and decides new vs returning
             logger.debug(f"Detection confidence: {det_score:.3f}")
-            api_response = api.identify(embedding, best_frame)
+            api_response = api.identify(embedding, best_frame, bbox)
             
             if api_response.success:
                 visitor_id = api_response.customer_id
@@ -630,7 +743,9 @@ def run_visitor_counter(
                 scored_frames=scored_frames,
                 best_score=best_score,
                 visitor_result=visitor_result,
-                visitor_id=visitor_id
+                visitor_id=visitor_id,
+                det_score=det_score,
+                api_sent=True
             )
             
             # Update cooldown
@@ -703,16 +818,16 @@ if __name__ == "__main__":
             location_id = cfg.API_LOCATION_ID
             logger.info("No cameras.yaml found, using config.py defaults")
         
-        # Create a minimal camera config for webcam (settings as dict)
+        # Create a minimal camera config for webcam (settings from config.py)
         webcam_settings = {
-            'target_width': 1280,
-            'process_every_n_frames': 3,
-            'quality_capture_duration': 3.0,
-            'quality_frame_skip': 2,
-            'similarity_threshold': 0.45,
-            'cooldown_seconds': 5,
-            'min_quality_score': 300,
-            'min_detection_score': 0.65
+            'target_width': cfg.TARGET_WIDTH,
+            'process_every_n_frames': cfg.PROCESS_EVERY_N_FRAMES,
+            'quality_capture_duration': cfg.QUALITY_CAPTURE_DURATION_SEC,
+            'quality_frame_skip': cfg.QUALITY_FRAME_SKIP,
+            'similarity_threshold': cfg.SIMILARITY_THRESHOLD,
+            'cooldown_seconds': cfg.COOLDOWN_SECONDS,
+            'min_quality_score': cfg.MIN_QUALITY_SCORE,
+            'min_detection_score': cfg.MIN_DETECTION_SCORE
         }
         webcam_config = CameraConfig(
             id="webcam",

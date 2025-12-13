@@ -93,7 +93,7 @@ SIMILARITY_THRESHOLD: float = 0.50  # Cosine similarity threshold for matching
                                      # Lower = more matches (risk: merge different people)
                                      # Higher = fewer matches (risk: same person counted twice)
 
-COOLDOWN_SECONDS: int = 30  # Wait time before processing next person
+COOLDOWN_SECONDS: int = 5  # Wait time before processing next person
 
 # =============================================================================
 # QUALITY GATE THRESHOLDS (False Positive Prevention)
@@ -105,7 +105,7 @@ MIN_QUALITY_SCORE: float = 500  # 50% of base score
 
 # Minimum InsightFace detection confidence to send to API
 # Lower confidence = less reliable embedding = potential false match
-MIN_DETECTION_SCORE: float = 0.80
+MIN_DETECTION_SCORE: float = 0.75
 
 # =============================================================================
 # MODEL SETTINGS
