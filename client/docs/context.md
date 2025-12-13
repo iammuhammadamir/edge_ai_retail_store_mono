@@ -1,6 +1,6 @@
 # Edge Device - Multi-Camera System
 
-> **Last Updated**: December 13, 2025  
+> **Last Updated**: December 14, 2025  
 > **Status**: ✅ Production Ready - Multi-Camera Support  
 > **Backend**: https://dashboard.smoothflow.ai
 
@@ -83,11 +83,12 @@ This is the **edge device component** of the ClientBridge system. It runs on a J
 | `main.py` | **Main entry point** - spawns workers for each camera |
 | `camera_manager.py` | Loads and validates camera configuration |
 | `visitor_counter.py` | Face recognition worker - detection, quality scoring, API calls |
-| `api_client.py` | HTTP client for server communication |
+| `api_client.py` | HTTP client for server communication (uses InsightFace bbox for cropping) |
 | `face_recognition.py` | InsightFace wrapper - embedding extraction |
-| `frame_quality.py` | Quality scoring (sharpness, frontality, brightness, contrast) |
-| `config.py` | Legacy config (still used for model paths, debug settings) |
+| `frame_quality.py` | Quality scoring (frontality, face size) using YuNet landmarks |
+| `config.py` | **Primary config** - all hyperparameters, thresholds, API settings |
 | `requirements.txt` | Python dependencies |
+| `../tune_quality.py` | **Dev tool** - Real-time quality score tuning with webcam |
 
 ---
 
@@ -147,12 +148,53 @@ cameras:
 | `face_recognition` | Customer loyalty tracking | Heavy (InsightFace, quality scoring) |
 | `live_stream` | Real-time monitoring | Light (encode & stream) - Phase 2 |
 
-### Legacy Configuration (`config.py`)
+### Primary Configuration (`config.py`)
 
-`config.py` is still used for:
-- Model paths (InsightFace model directory)
-- Debug settings (DEBUG_MODE, DEBUG_OUTPUT_DIR)
-- Default values when running in legacy mode (`--legacy` flag)
+`config.py` is the **primary source of truth** for all hyperparameters:
+
+```python
+# Processing
+TARGET_WIDTH = 1280
+PROCESS_EVERY_N_FRAMES = 5
+
+# Quality capture
+QUALITY_CAPTURE_DURATION_SEC = 5.0
+QUALITY_FRAME_SKIP = 3
+
+# Quality scoring weights (0-10 scale)
+QUALITY_IMPORTANCE = {
+    'frontality': 8,   # Critical - angled faces match poorly
+    'face_size': 5,    # Important - small faces unreliable
+    'sharpness': 0,    # Disabled
+    'brightness': 0,   # Disabled
+    'contrast': 0,     # Disabled
+}
+
+# Quality thresholds
+QUALITY_THRESHOLDS = {
+    'face_size': {'zero_px': 60, 'critical_px': 100, 'good_px': 115},
+    'frontality': {'good_yaw': 3, 'critical_yaw': 10, 'good_pitch': 2, 'critical_pitch': 8},
+}
+
+# Quality gates
+MIN_QUALITY_SCORE = 500      # Minimum score to proceed (out of 1000)
+MIN_DETECTION_SCORE = 0.75   # Minimum InsightFace confidence
+
+# Recognition
+SIMILARITY_THRESHOLD = 0.50  # Cosine similarity for matching
+COOLDOWN_SECONDS = 5         # Wait between detections
+
+# API
+API_BASE_URL = "https://dashboard.smoothflow.ai"
+API_KEY = "dev-edge-api-key"
+API_LOCATION_ID = 1
+
+# Debug
+DEBUG_MODE = False
+DEBUG_OUTPUT_DIR = "debug_output"
+```
+
+**Note**: When using `--webcam` mode, settings are read from `config.py` (not hardcoded). The `cameras.yaml` settings override `config.py` when running via `main.py`.
 
 ---
 
@@ -248,9 +290,9 @@ python visitor_counter.py --camera cam_entrance  # Use cameras.yaml
 #### Configurable Thresholds (`config.py` → `QUALITY_THRESHOLDS`)
 | Factor | Zero | Critical | Good | Notes |
 |--------|------|----------|------|-------|
-| **Face Size** | 60px | 105px | 105px | Below 60px = score 0, quadratic penalty 60-105px |
-| **Frontality (Yaw)** | - | ±35° | ±15° | Left/right rotation |
-| **Frontality (Pitch)** | - | ±30° | ±10° | Up/down rotation |
+| **Face Size** | 60px | 100px | 115px | Below 60px = score 0, quadratic penalty 60-100px |
+| **Frontality (Yaw)** | - | ±10° | ±3° | Left/right rotation |
+| **Frontality (Pitch)** | - | ±8° | ±2° | Up/down rotation |
 
 #### Importance Weights (0-10 scale)
 - **Frontality (8)**: Critical - angled faces match poorly
@@ -260,8 +302,8 @@ python visitor_counter.py --camera cam_entrance  # Use cameras.yaml
 - **Contrast (0)**: Disabled
 
 ### Quality Gate 1: Minimum Quality Score
-- **Threshold**: 350/1000
-- If best frame score < 350, skip recognition entirely
+- **Threshold**: 500/1000 (configurable via `MIN_QUALITY_SCORE`)
+- If best frame score < threshold, skip recognition entirely
 - Prevents wasting API calls on poor captures (angled faces, far away, etc.)
 
 ### Phase 4: Embedding Extraction (~50-100ms)
@@ -270,8 +312,8 @@ python visitor_counter.py --camera cam_entrance  # Use cameras.yaml
 - Returns detection confidence score
 
 ### Quality Gate 2: Detection Confidence
-- **Threshold**: 0.70
-- If InsightFace detection confidence < 0.70, skip API call
+- **Threshold**: 0.75 (configurable via `MIN_DETECTION_SCORE`)
+- If InsightFace detection confidence < threshold, skip API call
 - Prevents false enrollments from unreliable embeddings
 
 ### Phase 5: Server Identification (~500-1000ms)
@@ -279,8 +321,9 @@ python visitor_counter.py --camera cam_entrance  # Use cameras.yaml
 - Server compares against all customers
 - Returns: new/returning, customer ID, visit count
 
-### Cooldown (30 seconds)
+### Cooldown (5 seconds, configurable)
 - Prevents same person being counted multiple times
+- Configurable via `COOLDOWN_SECONDS` in `config.py`
 - Resumes scanning after cooldown
 
 ---
@@ -422,14 +465,38 @@ cloudflared tunnel --url http://localhost:8888
 ## Debug Mode
 
 ```bash
-python visitor_counter.py --debug
+python visitor_counter.py --webcam --debug
 ```
 
-Creates reports in `debug_output/`:
-- `debug_YYYYMMDD_HHMMSS.md` - Quality scores for all frames
-- `best_YYYYMMDD_HHMMSS.jpg` - Best frame with bounding box
+Creates detailed reports in `debug_output/` for **every frame sent to API**:
 
-Useful for tuning quality thresholds.
+### Debug Report Contents (`debug_*.md`)
+- **Decision Summary**: Pass/fail status for quality gates
+- **Frame Statistics**: Capture details, face dimensions
+- **Quality Score Breakdown**: Each metric's raw value, score, importance, contribution
+- **Threshold Configuration**: Current `config.py` values
+- **Best Frame Image**: Embedded with bounding box, quality score, detection score, yaw/pitch arrow
+
+### Files Generated
+- `debug_YYYYMMDD_HHMMSS.md` - Full quality breakdown with embedded images
+- `best_YYYYMMDD_HHMMSS.jpg` - Best frame with detailed visualization
+
+### Quality Tuning Tool
+
+For real-time hyperparameter tuning:
+```bash
+python tune_quality.py
+```
+
+Displays live webcam feed with:
+- Face bounding box (color-coded by score)
+- Detection score from YuNet
+- Facial landmarks visualization
+- Individual quality scores (frontality, size, sharpness, etc.)
+- Total quality score with pass/fail status
+- Current threshold values from `config.py`
+
+Press 'q' to quit.
 
 ---
 
