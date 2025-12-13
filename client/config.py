@@ -55,8 +55,8 @@ QUALITY_BASE_SCORE: float = 1000.0  # Starting score before penalties
 QUALITY_THRESHOLDS: dict = {
     'face_size': {
         'zero_px': 60,          # Below 60px = score becomes 0 (unusable)
-        'critical_px': 105,     # Below 105px = aggressive penalty
-        'good_px': 105,         # Above 105px = perfect score (1.0)
+        'critical_px': 100,     # Below 105px = aggressive penalty
+        'good_px': 115,         # Above 105px = perfect score (1.0)
     },
     'sharpness': {
         'critical': 50,         # Laplacian variance below 50 = very blurry
@@ -73,10 +73,10 @@ QUALITY_THRESHOLDS: dict = {
         'good': 50,             # Above 50 = good contrast
     },
     'frontality': {
-        'critical_yaw': 35,     # Beyond ±35° yaw = aggressive penalty
-        'good_yaw': 15,         # Within ±15° = good
-        'critical_pitch': 30,   # Beyond ±30° pitch = aggressive penalty
-        'good_pitch': 10,       # Within ±10° = good
+        'critical_yaw': 10,     # Beyond ±35° yaw = aggressive penalty
+        'good_yaw': 3,         # Within ±15° = good
+        'critical_pitch': 8,   # Beyond ±30° pitch = aggressive penalty
+        'good_pitch': 2,       # Within ±10° = good
     },
 }
 
@@ -101,11 +101,11 @@ COOLDOWN_SECONDS: int = 30  # Wait time before processing next person
 
 # Minimum quality score to proceed with recognition (out of 1000)
 # Frames below this are skipped entirely (saves API calls)
-MIN_QUALITY_SCORE: float = 350  # 50% of base score
+MIN_QUALITY_SCORE: float = 500  # 50% of base score
 
 # Minimum InsightFace detection confidence to send to API
 # Lower confidence = less reliable embedding = potential false match
-MIN_DETECTION_SCORE: float = 0.70
+MIN_DETECTION_SCORE: float = 0.80
 
 # =============================================================================
 # MODEL SETTINGS

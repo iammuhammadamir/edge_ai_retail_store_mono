@@ -418,6 +418,9 @@ def run_visitor_counter(
     if isinstance(camera_source, str) and camera_source.startswith("rtsp://"):
         # Set RTSP transport to TCP (more reliable than UDP)
         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+    elif isinstance(camera_source, str) and camera_source.isdigit():
+        # Convert webcam index string to integer
+        camera_source = int(camera_source)
     cap = cv2.VideoCapture(camera_source)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     
@@ -676,11 +679,58 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true", help="Enable debug mode (save reports and images)")
     parser.add_argument("--camera", type=str, help="Camera ID from cameras.yaml")
     parser.add_argument("--config", type=str, help="Path to cameras.yaml config file")
+    parser.add_argument("--webcam", action="store_true", help="Use Mac webcam (camera index 0) for development")
     args = parser.parse_args()
     
     if args.debug:
         cfg.DEBUG_MODE = True
         logger.info(f"Debug mode enabled: saving to {cfg.DEBUG_OUTPUT_DIR}")
+    
+    # Webcam mode - use Mac's built-in camera with default settings
+    if args.webcam:
+        logger.info("Using webcam mode (Mac camera index 0)")
+        
+        # Load config just for API settings
+        try:
+            config = load_config(args.config)
+            api_base_url = config.api.base_url
+            api_key = config.api.key
+            location_id = config.location.id
+        except FileNotFoundError:
+            # Use defaults from config.py if no cameras.yaml
+            api_base_url = cfg.API_BASE_URL
+            api_key = cfg.API_KEY
+            location_id = cfg.API_LOCATION_ID
+            logger.info("No cameras.yaml found, using config.py defaults")
+        
+        # Create a minimal camera config for webcam (settings as dict)
+        webcam_settings = {
+            'target_width': 1280,
+            'process_every_n_frames': 3,
+            'quality_capture_duration': 3.0,
+            'quality_frame_skip': 2,
+            'similarity_threshold': 0.45,
+            'cooldown_seconds': 5,
+            'min_quality_score': 300,
+            'min_detection_score': 0.65
+        }
+        webcam_config = CameraConfig(
+            id="webcam",
+            name="Mac Webcam",
+            rtsp_url="0",  # Camera index 0
+            use_case="face_recognition",
+            enabled=True,
+            settings=webcam_settings
+        )
+        
+        run_visitor_counter(
+            camera_config=webcam_config,
+            api_base_url=api_base_url,
+            api_key=api_key,
+            location_id=location_id,
+            debug_mode=args.debug
+        )
+        sys.exit(0)
     
     # Load configuration from cameras.yaml
     try:
