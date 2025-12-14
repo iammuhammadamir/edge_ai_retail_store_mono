@@ -92,8 +92,11 @@ See [ClientBridge/README.md](ClientBridge/README.md) for full setup.
 #### Face Recognition
 ```bash
 cd client
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+
+# For Jetson Orin (JetPack 6) with GPU support:
+# See client/README.md for cuDNN 8 setup instructions
 
 # Configure cameras.yaml with your RTSP URLs
 nano cameras.yaml
