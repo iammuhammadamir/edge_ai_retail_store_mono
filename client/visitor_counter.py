@@ -37,6 +37,7 @@ from face_recognition import (
 from frame_quality import (
     compute_quality_score,
     score_frames,
+    score_frames_dual,
     get_best_frame,
     detect_face,
     QualityScore
@@ -63,9 +64,9 @@ logger = logging.getLogger(__name__)
 class PersonCapture:
     """Container for frames captured for a single person."""
     session_id: str
-    frames: List[np.ndarray]
+    frames: List[Tuple[np.ndarray, np.ndarray]]  # (cropped_hires, resized_lowres)
     start_time: float
-    trigger_frame: np.ndarray  # The frame that triggered detection
+    trigger_frame: Tuple[np.ndarray, np.ndarray]  # (cropped_hires, resized_lowres)
 
 
 # =============================================================================
@@ -158,7 +159,8 @@ def capture_frames_for_person(
             frame_cropped = crop_frame(frame, crop_left=0.35, crop_right=0.35,
                                        crop_top=0.10, crop_bottom=0.40)
             frame_resized = resize_frame(frame_cropped, target_width)
-            frames.append(frame_resized)
+            # Store both: cropped (high-res for recognition) and resized (for scoring)
+            frames.append((frame_cropped, frame_resized))
     
     logger.debug(f"Captured {len(frames)} frames ({frame_count} total, kept every {frame_skip})")
     
@@ -174,19 +176,23 @@ def capture_frames_for_person(
 # QUALITY SCORING & SELECTION
 # =============================================================================
 
-def select_best_frame(capture: PersonCapture) -> Tuple[np.ndarray, QualityScore, List[Tuple[int, np.ndarray, QualityScore]]]:
+def select_best_frame(capture: PersonCapture) -> Tuple[np.ndarray, np.ndarray, QualityScore, List[Tuple[int, np.ndarray, np.ndarray, QualityScore]]]:
     """
     Score all frames and select the best one.
     
+    Frames are stored as (cropped_hires, resized_lowres) tuples.
+    Scoring uses resized_lowres, but returns cropped_hires for recognition.
+    
     Returns:
-        (best_frame, best_score, all_scored_frames)
+        (best_frame_hires, best_frame_lowres, best_score, all_scored_frames)
     """
-    scored = score_frames(capture.frames)
+    scored = score_frames_dual(capture.frames)
     
     if not scored:
         # Fallback to trigger frame if no faces detected in any frame
         logger.warning("No faces detected in captured frames, using trigger frame")
-        score = compute_quality_score(capture.trigger_frame)
+        trigger_hires, trigger_lowres = capture.trigger_frame
+        score = compute_quality_score(trigger_lowres)
         if score is None:
             # Create a minimal score for the trigger frame
             score = QualityScore(
@@ -194,10 +200,10 @@ def select_best_frame(capture: PersonCapture) -> Tuple[np.ndarray, QualityScore,
                 brightness=0.0, contrast=0.0, frontality=0.0,
                 yaw=0.0, pitch=0.0, bbox=(0, 0, 0, 0)
             )
-        return (capture.trigger_frame, score, [])
+        return (trigger_hires, trigger_lowres, score, [])
     
-    best_idx, best_frame, best_score = scored[0]
-    return (best_frame, best_score, scored)
+    best_idx, best_frame_hires, best_frame_lowres, best_score = scored[0]
+    return (best_frame_hires, best_frame_lowres, best_score, scored)
 
 
 # =============================================================================
@@ -276,7 +282,7 @@ def draw_face_box_detailed(image: np.ndarray, bbox: Tuple[int, int, int, int],
 
 def generate_debug_report(
     capture: PersonCapture,
-    scored_frames: List[Tuple[int, np.ndarray, QualityScore]],
+    scored_frames: List[Tuple[int, np.ndarray, np.ndarray, QualityScore]],
     best_score: QualityScore,
     visitor_result: str,
     visitor_id: int,
@@ -288,7 +294,7 @@ def generate_debug_report(
     
     Args:
         capture: PersonCapture with frames
-        scored_frames: List of (frame_idx, frame, QualityScore)
+        scored_frames: List of (frame_idx, frame_hires, frame_lowres, QualityScore)
         best_score: QualityScore of best frame
         visitor_result: Result string (NEW, RETURNING, LOW_QUALITY, etc.)
         visitor_id: Visitor ID if identified
@@ -389,9 +395,10 @@ Frontality:
 """
     
     # Add best frame with detailed visualization
+    # scored_frames format: (idx, hires, lowres, score) - use lowres for display
     if scored_frames:
-        best_frame = scored_frames[0][1]
-        annotated = draw_face_box_detailed(best_frame, best_score.bbox, best_score, det_score)
+        best_frame_lowres = scored_frames[0][2]
+        annotated = draw_face_box_detailed(best_frame_lowres, best_score.bbox, best_score, det_score)
         b64_img = image_to_base64(annotated, max_width=600)
         md += f"![Best Frame]({b64_img})\n\n"
     
@@ -405,8 +412,8 @@ Frontality:
     
     # Also save best frame as image
     if cfg.DEBUG_SAVE_TOP_FRAMES and scored_frames:
-        best_frame = scored_frames[0][1]
-        best_annotated = draw_face_box_detailed(best_frame, best_score.bbox, best_score, det_score)
+        best_frame_lowres = scored_frames[0][2]
+        best_annotated = draw_face_box_detailed(best_frame_lowres, best_score.bbox, best_score, det_score)
         best_path = os.path.join(cfg.DEBUG_OUTPUT_DIR, f"best_{capture.session_id}.jpg")
         cv2.imwrite(best_path, best_annotated)
         logger.debug(f"Best frame saved: {best_path}")
@@ -617,7 +624,7 @@ def run_visitor_counter(
             t0 = time.perf_counter()
             capture = capture_frames_for_person(
                 cap=cap,
-                trigger_frame=frame_resized,
+                trigger_frame=(frame_cropped, frame_resized),  # (hires, lowres)
                 duration=capture_duration,
                 frame_skip=frame_skip,
                 target_width=target_width
@@ -630,7 +637,7 @@ def run_visitor_counter(
             # PHASE 3: Score frames and select best
             # =================================================================
             t0 = time.perf_counter()
-            best_frame, best_score, scored_frames = select_best_frame(capture)
+            best_frame_hires, best_frame_lowres, best_score, scored_frames = select_best_frame(capture)
             scoring_time = (time.perf_counter() - t0) * 1000
             timing_stats['scoring'].append(scoring_time)
             session_stats['frames_scored'] += len(scored_frames)
@@ -661,10 +668,11 @@ def run_visitor_counter(
                 continue
             
             # =================================================================
-            # PHASE 4: Extract embedding from best frame
+            # PHASE 4: Extract embedding from best frame (using HIGH-RES cropped)
             # =================================================================
+            # Use the high-resolution cropped frame for better embedding quality
             t0 = time.perf_counter()
-            face_results = extract_embeddings(best_frame)
+            face_results = extract_embeddings(best_frame_hires)
             recognition_time = (time.perf_counter() - t0) * 1000
             timing_stats['recognition'].append(recognition_time)
             
@@ -714,8 +722,9 @@ def run_visitor_counter(
             # PHASE 5: Send to server for identification
             # =================================================================
             # Server performs matching and decides new vs returning
+            # Use lowres frame for the image upload (smaller file size)
             logger.debug(f"Detection confidence: {det_score:.3f}")
-            api_response = api.identify(embedding, best_frame, bbox)
+            api_response = api.identify(embedding, best_frame_lowres, bbox)
             
             if api_response.success:
                 visitor_id = api_response.customer_id

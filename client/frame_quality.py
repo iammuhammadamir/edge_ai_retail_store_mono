@@ -620,6 +620,33 @@ def score_frames(frames: List[np.ndarray]) -> List[Tuple[int, np.ndarray, Qualit
     return results
 
 
+def score_frames_dual(frames: List[Tuple[np.ndarray, np.ndarray]]) -> List[Tuple[int, np.ndarray, np.ndarray, QualityScore]]:
+    """
+    Score multiple dual-resolution frames and return sorted by quality.
+    
+    This version handles frames stored as (hires, lowres) tuples.
+    Scoring is done on lowres for speed, but hires is preserved for recognition.
+    
+    Args:
+        frames: List of (cropped_hires, resized_lowres) tuples
+    
+    Returns:
+        List of (frame_index, hires, lowres, score) tuples, sorted by total score descending
+    """
+    results = []
+    
+    for i, (frame_hires, frame_lowres) in enumerate(frames):
+        # Score using the lowres frame (faster, same quality assessment)
+        score = compute_quality_score(frame_lowres)
+        if score is not None:
+            results.append((i, frame_hires, frame_lowres, score))
+    
+    # Sort by total score descending
+    results.sort(key=lambda x: x[3].total, reverse=True)
+    
+    return results
+
+
 def get_best_frame(frames: List[np.ndarray]) -> Optional[Tuple[np.ndarray, QualityScore]]:
     """
     Get the best quality frame from a list.
