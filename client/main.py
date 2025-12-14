@@ -73,36 +73,6 @@ def run_face_recognition_worker(
         raise
 
 
-def run_live_stream_worker(
-    camera: CameraConfig,
-    api_base_url: str,
-    api_key: str,
-    location_id: int,
-    shutdown_event: Event,
-    debug_mode: bool = False
-) -> None:
-    """
-    Run live streaming worker for a camera.
-    
-    This function runs in a separate process.
-    Generates HLS segments and uploads to Supabase Storage.
-    """
-    from live_stream import run_live_stream_worker as run_stream
-    
-    logger.info(f"Starting live_stream worker for: {camera.name}")
-    
-    try:
-        run_stream(
-            camera_config=camera,
-            location_id=location_id,
-            shutdown_event=shutdown_event,
-            debug_mode=debug_mode
-        )
-    except Exception as e:
-        logger.error(f"Live stream worker {camera.id} crashed: {e}")
-        raise
-
-
 # =============================================================================
 # PROCESS MANAGEMENT
 # =============================================================================

@@ -50,27 +50,6 @@ cameras:
       min_quality_score: 350          # Minimum quality to proceed (out of 1000)
       min_detection_score: 0.70       # Minimum InsightFace confidence
 
-  # -----------------------------------------------------------------------------
-  # Live Stream Camera (Floor) - HLS Streaming
-  # -----------------------------------------------------------------------------
-  # For local testing with MediaMTX + USB cameras on Mac:
-  #   rtsp://localhost:8554/cam1  (H264 USB Camera)
-  #   rtsp://localhost:8554/cam2  (UVC Camera)
-  #
-  - id: "cam_floor"
-    name: "Floor Camera (USB)"
-    rtsp_url: "rtsp://localhost:8554/cam1"
-    use_case: "live_stream"
-    enabled: true
-    
-    # HLS streaming settings
-    settings:
-      target_width: 640             # 360p width (640x360) - lower quality, faster uploads
-      target_fps: 12                # Lower FPS for smaller segments
-      segment_duration: 2           # Seconds per HLS segment
-      segments_to_keep: 5           # Rolling window
-      crf: 28                       # Quality (higher = lower quality, smaller files)
-
 # =============================================================================
 # EXAMPLE: Adding a second face recognition camera
 # =============================================================================

@@ -3,7 +3,6 @@ numpy>=1.24.0,<2.0.0
 insightface>=0.7.0
 requests>=2.28.0
 PyYAML>=6.0
-supabase>=2.0.0
 
 # GPU Support (Jetson Orin - JetPack 6)
 # --------------------------------------
