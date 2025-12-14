@@ -7,10 +7,14 @@ supabase>=2.0.0
 
 # GPU Support (Jetson Orin - JetPack 6)
 # --------------------------------------
-# Do NOT install onnxruntime from PyPI - it's CPU-only.
-# Install the pre-built Jetson wheel for JetPack 6 / cuDNN 9:
-#   pip install /home/mafiq/onnxruntime_gpu-1.18.0-cp310-cp310-linux_aarch64.whl
+# JetPack 6 ships with cuDNN 9, but ONNX Runtime wheels require cuDNN 8.
+# 
+# Setup steps:
+# 1. Install onnxruntime-gpu wheel from Jetson Zoo (JetPack 6.0, cp310):
+#    pip install /home/mafiq/onnxruntime_gpu-1.18.0-cp310-cp310-linux_aarch64.whl
 #
-# Download from NVIDIA Jetson Zoo if needed:
-#   https://elinux.org/Jetson_Zoo#ONNX_Runtime
-#   (Select JetPack 6.0 section, cp310 wheel)
+# 2. cuDNN 8 libraries are at: /home/mafiq/cudnn8/cudnn-linux-sbsa-8.9.7.29_cuda12-archive/lib
+#    Set LD_LIBRARY_PATH before running:
+#    export LD_LIBRARY_PATH=/home/mafiq/cudnn8/cudnn-linux-sbsa-8.9.7.29_cuda12-archive/lib:$LD_LIBRARY_PATH
+#
+# Or use the wrapper script: ./run_gpu.sh --debug
