@@ -206,6 +206,88 @@ def select_best_frame(capture: PersonCapture) -> Tuple[np.ndarray, np.ndarray, Q
     return (best_frame_hires, best_frame_lowres, best_score, scored)
 
 
+def compute_fused_embedding(
+    scored_frames: List[Tuple[int, np.ndarray, np.ndarray, QualityScore]],
+    min_quality_score: float,
+    min_detection_score: float,
+    top_n: int = 3,
+    weight_power: float = 0.3
+) -> Tuple[Optional[np.ndarray], List[Tuple[float, float, float]], Optional[np.ndarray]]:
+    """
+    Compute soft-weighted average embedding from top N frames above quality threshold.
+    
+    Args:
+        scored_frames: List of (idx, frame_hires, frame_lowres, QualityScore), sorted by score
+        min_quality_score: Minimum quality score to consider a frame
+        min_detection_score: Minimum InsightFace detection confidence
+        top_n: Maximum number of frames to fuse
+        weight_power: Exponent for soft weighting (0.3 = lenient, 1.0 = linear)
+    
+    Returns:
+        (fused_embedding, fusion_details, best_frame_for_api)
+        - fused_embedding: Normalized weighted average, or None if no valid frames
+        - fusion_details: List of (quality_score, det_score, weight) for each fused frame
+        - best_frame_for_api: The lowres frame from the highest-scoring valid frame
+    """
+    embeddings = []
+    weights = []
+    det_scores = []
+    quality_scores = []
+    best_frame_lowres = None
+    
+    for idx, frame_hires, frame_lowres, score in scored_frames:
+        # Quality gate: skip frames below threshold
+        if score.total < min_quality_score:
+            continue
+        
+        # Extract embedding from high-res frame
+        face_results = extract_embeddings(frame_hires)
+        if not face_results:
+            continue
+        
+        emb, bbox, det_score = face_results[0]
+        
+        # Detection confidence gate
+        if det_score < min_detection_score:
+            continue
+        
+        # Valid frame - add to fusion
+        embeddings.append(emb)
+        det_scores.append(det_score)
+        quality_scores.append(score.total)
+        
+        # Soft weight: score^power dampens quality differences
+        weights.append(score.total ** weight_power)
+        
+        # Keep first valid frame for API image
+        if best_frame_lowres is None:
+            best_frame_lowres = frame_lowres
+        
+        # Stop after top_n valid frames
+        if len(embeddings) >= top_n:
+            break
+    
+    if not embeddings:
+        return None, [], None
+    
+    # Normalize weights to sum to 1
+    weights = np.array(weights)
+    weights = weights / weights.sum()
+    
+    # Compute weighted average
+    fused = np.zeros_like(embeddings[0])
+    for emb, w in zip(embeddings, weights):
+        fused += emb * w
+    
+    # Re-normalize to unit vector (important for cosine similarity)
+    fused = fused / np.linalg.norm(fused)
+    
+    # Build fusion details for logging
+    fusion_details = list(zip(quality_scores, det_scores, weights.tolist()))
+    
+    return fused, fusion_details, best_frame_lowres
+
+
 # =============================================================================
 # DEBUG OUTPUT
 # =============================================================================
@@ -605,17 +687,18 @@ def run_visitor_counter(
             frame_resized = resize_frame(frame_cropped, target_width)
             
             # =================================================================
-            # PHASE 1: Fast face detection (Haar cascade)
+            # PHASE 1: Fast face detection (YuNet) with confidence filter
             # =================================================================
             t0 = time.perf_counter()
-            face_bbox = detect_face(frame_resized)
+            detection_result = detect_face(frame_resized, min_confidence=cfg.MIN_DET_CONF)
             detection_time = (time.perf_counter() - t0) * 1000
             timing_stats['detection'].append(detection_time)
             
-            if face_bbox is None:
-                continue  # No face detected, keep scanning
+            if detection_result is None:
+                continue  # No face detected above confidence threshold
             
-            logger.info(f"Face detected! Starting capture...")
+            face_bbox, det_conf = detection_result
+            logger.info(f"Face detected (conf={det_conf:.2f})! Starting capture...")
             session_stats['total_detections'] += 1
             
             # =================================================================
@@ -647,10 +730,10 @@ def run_visitor_counter(
                         f"size={best_score.face_size:.2f}, yaw={best_score.yaw:.1f}°)")
             
             # =================================================================
-            # QUALITY GATE 1: Check minimum quality score
+            # QUALITY GATE: Check if best frame meets minimum quality
             # =================================================================
             if best_score.total < min_quality_score:
-                logger.warning(f"Quality score {best_score.total:.0f} below threshold "
+                logger.warning(f"Best quality score {best_score.total:.0f} below threshold "
                               f"{min_quality_score:.0f} - skipping recognition")
                 
                 if debug_mode and scored_frames:
@@ -668,24 +751,30 @@ def run_visitor_counter(
                 continue
             
             # =================================================================
-            # PHASE 4: Extract embedding from best frame (using HIGH-RES cropped)
+            # PHASE 4: Multi-frame embedding fusion
             # =================================================================
-            # Use the high-resolution cropped frame for better embedding quality
+            # Extract embeddings from top N frames (above quality threshold)
+            # and compute soft-weighted average for more robust recognition
             t0 = time.perf_counter()
-            face_results = extract_embeddings(best_frame_hires)
+            fused_embedding, fusion_details, api_frame = compute_fused_embedding(
+                scored_frames=scored_frames,
+                min_quality_score=min_quality_score,
+                min_detection_score=min_detection_score,
+                top_n=cfg.EMBEDDING_FUSION_TOP_N,
+                weight_power=cfg.EMBEDDING_FUSION_WEIGHT_POWER
+            )
             recognition_time = (time.perf_counter() - t0) * 1000
             timing_stats['recognition'].append(recognition_time)
             
-            if not face_results:
-                logger.warning("No face found in best frame for embedding extraction")
+            if fused_embedding is None:
+                logger.warning("No valid frames for embedding fusion (all failed quality/detection gates)")
                 
-                # Still generate debug report for analysis
                 if debug_mode and scored_frames:
                     generate_debug_report(
                         capture=capture,
                         scored_frames=scored_frames,
                         best_score=best_score,
-                        visitor_result="NO_FACE",
+                        visitor_result="NO_VALID_FRAMES",
                         visitor_id=0,
                         det_score=None,
                         api_sent=False
@@ -694,37 +783,24 @@ def run_visitor_counter(
                 last_capture_time = time.time()
                 continue
             
-            # Use the first (best) face result
-            embedding, bbox, det_score = face_results[0]
+            # Log fusion details
+            n_fused = len(fusion_details)
+            weights_str = ", ".join([f"{w:.2f}" for _, _, w in fusion_details])
+            scores_str = ", ".join([f"{s:.0f}" for s, _, _ in fusion_details])
+            det_scores_str = ", ".join([f"{d:.2f}" for _, d, _ in fusion_details])
+            logger.info(f"Fused {n_fused} embeddings: scores=[{scores_str}], "
+                       f"det=[{det_scores_str}], weights=[{weights_str}]")
             
-            # =================================================================
-            # QUALITY GATE 2: Check InsightFace detection confidence
-            # =================================================================
-            if det_score < min_detection_score:
-                logger.warning(f"Detection confidence {det_score:.3f} below threshold "
-                              f"{min_detection_score} - skipping API call")
-                
-                if debug_mode and scored_frames:
-                    generate_debug_report(
-                        capture=capture,
-                        scored_frames=scored_frames,
-                        best_score=best_score,
-                        visitor_result=f"LOW_CONFIDENCE ({det_score:.2f})",
-                        visitor_id=0,
-                        det_score=det_score,
-                        api_sent=False
-                    )
-                
-                last_capture_time = time.time()
-                continue
+            # Use average det_score for logging/debug
+            avg_det_score = sum(d for _, d, _ in fusion_details) / n_fused
             
             # =================================================================
             # PHASE 5: Send to server for identification
             # =================================================================
             # Server performs matching and decides new vs returning
             # Use lowres frame for the image upload (smaller file size)
-            logger.debug(f"Detection confidence: {det_score:.3f}")
-            api_response = api.identify(embedding, best_frame_lowres, bbox)
+            logger.debug(f"Average detection confidence: {avg_det_score:.3f}")
+            api_response = api.identify(fused_embedding, api_frame, best_score.bbox)
             
             if api_response.success:
                 visitor_id = api_response.customer_id
@@ -753,7 +829,7 @@ def run_visitor_counter(
                 best_score=best_score,
                 visitor_result=visitor_result,
                 visitor_id=visitor_id,
-                det_score=det_score,
+                det_score=avg_det_score,
                 api_sent=True
             )
             

@@ -96,8 +96,24 @@ SIMILARITY_THRESHOLD: float = 0.50  # Cosine similarity threshold for matching
 COOLDOWN_SECONDS: int = 5  # Wait time before processing next person
 
 # =============================================================================
+# EMBEDDING FUSION SETTINGS
+# =============================================================================
+# Instead of using a single "best" frame, fuse embeddings from multiple top frames
+# This reduces noise from single-frame selection errors
+
+EMBEDDING_FUSION_TOP_N: int = 3       # Max frames to use for fusion
+EMBEDDING_FUSION_WEIGHT_POWER: float = 0.3  # Soft weighting exponent
+                                             # Lower = more lenient (equal weights)
+                                             # Higher = quality score matters more
+                                             # 0.3 means 900 vs 300 score → 1.4x weight difference (not 3x)
+
+# =============================================================================
 # QUALITY GATE THRESHOLDS (False Positive Prevention)
 # =============================================================================
+
+# Minimum YuNet detection confidence to proceed with quality scoring
+# This is checked EARLY to skip frames before expensive computations
+MIN_DET_CONF: float = 0.8
 
 # Minimum quality score to proceed with recognition (out of 1000)
 # Frames below this are skipped entirely (saves API calls)

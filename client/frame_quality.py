@@ -92,12 +92,16 @@ def get_yunet_detector(input_size: Tuple[int, int] = (640, 480)):
     return _yunet_detector
 
 
-def detect_face(frame: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+def detect_face(frame: np.ndarray, min_confidence: float = 0.0) -> Optional[Tuple[Tuple[int, int, int, int], float]]:
     """
     Detect the largest face in frame using YuNet.
     
+    Args:
+        frame: BGR image
+        min_confidence: Minimum detection confidence (0-1). Faces below this are ignored.
+    
     Returns:
-        (x1, y1, x2, y2) bounding box or None if no face found
+        ((x1, y1, x2, y2), confidence) or None if no face found above threshold
     """
     h, w = frame.shape[:2]
     detector = get_yunet_detector((w, h))
@@ -109,19 +113,30 @@ def detect_face(frame: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
         return None
     
     # faces format: [x, y, w, h, x_re, y_re, x_le, y_le, x_nt, y_nt, x_rcm, y_rcm, x_lcm, y_lcm, score]
-    # Return largest face by area
-    largest = max(faces, key=lambda f: f[2] * f[3])
+    # Filter by confidence first
+    confident_faces = [f for f in faces if f[14] >= min_confidence]
+    
+    if not confident_faces:
+        return None
+    
+    # Return largest face by area (among confident ones)
+    largest = max(confident_faces, key=lambda f: f[2] * f[3])
     x, y, fw, fh = int(largest[0]), int(largest[1]), int(largest[2]), int(largest[3])
-    return (x, y, x + fw, y + fh)
+    confidence = float(largest[14])
+    return ((x, y, x + fw, y + fh), confidence)
 
 
-def detect_face_with_landmarks(frame: np.ndarray) -> Optional[Tuple[Tuple[int, int, int, int], dict]]:
+def detect_face_with_landmarks(frame: np.ndarray, min_confidence: float = 0.0) -> Optional[Tuple[Tuple[int, int, int, int], dict]]:
     """
     Detect face and return landmarks from YuNet.
     
+    Args:
+        frame: BGR image
+        min_confidence: Minimum detection confidence (0-1). Faces below this are ignored.
+    
     Returns:
-        ((x1, y1, x2, y2), landmarks_dict) or None if no face found
-        landmarks_dict contains: right_eye, left_eye, nose, right_mouth, left_mouth
+        ((x1, y1, x2, y2), landmarks_dict) or None if no face found above threshold
+        landmarks_dict contains: right_eye, left_eye, nose, right_mouth, left_mouth, score
     """
     h, w = frame.shape[:2]
     detector = get_yunet_detector((w, h))
@@ -131,8 +146,14 @@ def detect_face_with_landmarks(frame: np.ndarray) -> Optional[Tuple[Tuple[int, i
     if faces is None or len(faces) == 0:
         return None
     
-    # Get largest face
-    largest = max(faces, key=lambda f: f[2] * f[3])
+    # Filter by confidence first
+    confident_faces = [f for f in faces if f[14] >= min_confidence]
+    
+    if not confident_faces:
+        return None
+    
+    # Get largest face (among confident ones)
+    largest = max(confident_faces, key=lambda f: f[2] * f[3])
     
     # Parse YuNet output
     # Format: [x, y, w, h, x_re, y_re, x_le, y_le, x_nt, y_nt, x_rcm, y_rcm, x_lcm, y_lcm, score]
@@ -497,7 +518,8 @@ def compute_quality_score(
     frame: np.ndarray,
     bbox: Optional[Tuple[int, int, int, int]] = None,
     importance: Dict[str, float] = None,
-    base_score: float = None
+    base_score: float = None,
+    min_det_conf: float = None
 ) -> Optional[QualityScore]:
     """
     Compute overall quality score for a frame using multiplicative penalties.
@@ -510,9 +532,10 @@ def compute_quality_score(
         bbox: Optional face bounding box. If None, will detect face.
         importance: Importance values for each metric (0-10 scale)
         base_score: Starting score before penalties (default 1000)
+        min_det_conf: Minimum YuNet detection confidence (default from config)
     
     Returns:
-        QualityScore object or None if no face found
+        QualityScore object or None if no face found above confidence threshold
     """
     # Import config for defaults
     try:
@@ -521,6 +544,8 @@ def compute_quality_score(
             importance = cfg.QUALITY_IMPORTANCE
         if base_score is None:
             base_score = cfg.QUALITY_BASE_SCORE
+        if min_det_conf is None:
+            min_det_conf = getattr(cfg, 'MIN_DET_CONF', 0.0)
     except ImportError:
         if importance is None:
             importance = {
@@ -532,11 +557,13 @@ def compute_quality_score(
             }
         if base_score is None:
             base_score = 1000.0
+        if min_det_conf is None:
+            min_det_conf = 0.0
     
     # Detect face with landmarks (single detection for both bbox and pose)
     landmarks = None
     if bbox is None:
-        result = detect_face_with_landmarks(frame)
+        result = detect_face_with_landmarks(frame, min_confidence=min_det_conf)
         if result is None:
             return None
         bbox, landmarks = result
