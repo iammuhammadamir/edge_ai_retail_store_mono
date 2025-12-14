@@ -209,10 +209,13 @@ EMBEDDING_FUSION_WEIGHT_POWER = 0.3  # Soft weighting exponent
 
 ## Models Used
 
-| Model | Purpose | Speed | File |
-|-------|---------|-------|------|
-| YuNet | Fast face detection | ~5-10ms | `face_detection_yunet_2023mar.onnx` |
-| InsightFace buffalo_s | Embedding extraction | ~50-100ms | Downloaded to `~/.insightface/models` |
+| Model | Purpose | Execution | Speed | File |
+|-------|---------|-----------|-------|------|
+| **YuNet** | Fast face detection | GPU (OpenCV CUDA) | ~5-10ms | `face_detection_yunet_2023mar.onnx` |
+| **InsightFace (Detection)** | Face alignment | GPU (CUDA EP) | ~9ms | `det_500m.onnx` |
+| **InsightFace (Recognition)** | Embedding extraction | CPU (Fallback) | ~50-100ms | `w600k_mbf.onnx` |
+
+**Note**: Face recognition runs on CPU to prevent Out-Of-Memory (OOM) errors on Jetson Orin Nano, while detection and alignment tasks are fully GPU accelerated.
 
 ---
 
