@@ -1,7 +1,16 @@
 opencv-python>=4.8.0
-numpy>=1.24.0
+numpy>=1.24.0,<2.0.0
 insightface>=0.7.0
-onnxruntime>=1.15.0
 requests>=2.28.0
 PyYAML>=6.0
 supabase>=2.0.0
+
+# GPU Support (Jetson Orin - JetPack 6)
+# --------------------------------------
+# Do NOT install onnxruntime from PyPI - it's CPU-only.
+# Install the pre-built Jetson wheel for JetPack 6 / cuDNN 9:
+#   pip install /home/mafiq/onnxruntime_gpu-1.18.0-cp310-cp310-linux_aarch64.whl
+#
+# Download from NVIDIA Jetson Zoo if needed:
+#   https://elinux.org/Jetson_Zoo#ONNX_Runtime
+#   (Select JetPack 6.0 section, cp310 wheel)
