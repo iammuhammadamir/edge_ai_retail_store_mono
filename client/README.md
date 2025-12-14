@@ -13,10 +13,34 @@ Edge device component for the Smoothflow AI retail intelligence platform. Runs o
 
 ### 1. Install Dependencies
 
+#### On Mac/PC (CPU only)
 ```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+```
+
+#### On Jetson Orin (JetPack 6 - GPU Support)
+JetPack 6 ships with cuDNN 9, but ONNX Runtime GPU wheels require cuDNN 8.
+
+1. **Install Python dependencies:**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+# Note: requirements.txt excludes onnxruntime. Follow step 2.
+```
+
+2. **Install ONNX Runtime GPU (JetPack 6 wheel):**
+```bash
+# Install the pre-downloaded wheel (v1.18.0)
+pip install /home/mafiq/onnxruntime_gpu-1.18.0-cp310-cp310-linux_aarch64.whl
+```
+
+3. **Set up cuDNN 8 libraries:**
+```bash
+# Run with the wrapper script that sets LD_LIBRARY_PATH
+./run_gpu.sh
 ```
 
 ### 2. Configure Cameras

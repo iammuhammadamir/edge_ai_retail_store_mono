@@ -200,33 +200,35 @@ DEBUG_OUTPUT_DIR = "debug_output"
 
 ## Quick Start
 
-### On Jetson Nano
+### On Jetson Orin (JetPack 6)
+**Note**: JetPack 6 ships with cuDNN 9, but ONNX Runtime GPU wheels require cuDNN 8. We use a compatibility workaround.
+
 ```bash
 # 1. Copy this folder to Jetson
 scp -r Edge_AI_For_Retail_Stores/ mafiq@jetson:/home/mafiq/
 
 # 2. SSH into Jetson
 ssh mafiq@jetson
+cd Edge_AI_For_Retail_Stores
 
 # 3. Create virtual environment
-cd Edge_AI_For_Retail_Stores
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 
-# 4. Install dependencies
+# 4. Install dependencies (excludes onnxruntime)
 pip install -r requirements.txt
 
-# 5. Edit cameras.yaml (camera URLs, location ID, settings)
+# 5. Install ONNX Runtime GPU (JetPack 6 wheel)
+pip install /home/mafiq/onnxruntime_gpu-1.18.0-cp310-cp310-linux_aarch64.whl
+
+# 6. Configure Cameras
 nano cameras.yaml
 
-# 6. Validate configuration
-python main.py --validate
+# 7. Run with GPU support (loads cuDNN 8 libs)
+./run_gpu.sh
 
-# 7. Run all enabled cameras
-python main.py
-
-# Or run a specific camera
-python main.py --camera cam_entrance
+# Or specific camera
+./run_gpu.sh --camera cam_entrance
 ```
 
 ### On Mac (Development)
@@ -451,9 +453,15 @@ cloudflared tunnel --url http://localhost:8888
 **Note**: The old `live_stream.py` (Supabase upload method) is deprecated. Use MediaMTX instead for simpler setup and lower latency.
 
 ### Performance on Jetson
-- First run downloads ~100MB model
-- Model loading takes ~10-20 seconds
-- After that, detection is fast (~5ms per frame)
+- **GPU Acceleration**:
+  - **Face Detection (YuNet/InsightFace)**: Fully GPU accelerated (~9ms/frame).
+  - **Face Recognition (InsightFace)**: Memory intensive. May encounter OOM on Jetson Orin Nano with large batch sizes. Currently optimized for reliability (CPU fallback or single-frame processing).
+- **Startup**:
+  - First run downloads ~100MB model
+  - Model loading takes ~10-20 seconds
+- **Runtime**:
+  - Detection: ~5-10ms (GPU)
+  - Recognition: ~50-100ms
 
 ### Network Dependency
 - Requires internet connection to server
@@ -537,7 +545,7 @@ PyYAML>=6.0
 supabase>=2.0.0        # For live streaming (Supabase Storage uploads)
 ```
 
-For Jetson with GPU acceleration, use `onnxruntime-gpu` instead of `onnxruntime`.
+For Jetson Orin (JetPack 6), use the provided `onnxruntime-gpu` wheel and run via `./run_gpu.sh` to ensure cuDNN 8 compatibility.
 
 ### System Dependencies (for Live Streaming)
 ```bash
