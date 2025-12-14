@@ -25,6 +25,12 @@ QUALITY_CAPTURE_DURATION_SEC: float = 5.0  # How long to capture after face dete
 QUALITY_FRAME_SKIP: int = 3  # Keep every Nth frame during capture
 QUALITY_TOP_N_FRAMES: int = 5  # Number of top frames to show in debug output
 
+# Frame trimming - skip frames from start/end of capture sequence
+# Useful because first frames (person entering) and last frames (person leaving)
+# are often lower quality
+FRAMES_SKIP_START: int = 1  # Skip first N frames before scoring
+FRAMES_SKIP_END: int = 3    # Skip last N frames before scoring
+
 # Quality scoring - Multiplicative penalty system
 # Each factor independently impacts the score via: score × factor^(importance/5)
 # Importance scale: 0 = ignored, 5 = linear penalty, 10 = quadratic penalty

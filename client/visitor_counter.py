@@ -176,17 +176,29 @@ def capture_frames_for_person(
 # QUALITY SCORING & SELECTION
 # =============================================================================
 
-def select_best_frame(capture: PersonCapture) -> Tuple[np.ndarray, np.ndarray, QualityScore, List[Tuple[int, np.ndarray, np.ndarray, QualityScore]]]:
+def select_best_frame(capture: PersonCapture, skip_start: int = 0, skip_end: int = 0) -> Tuple[np.ndarray, np.ndarray, QualityScore, List[Tuple[int, np.ndarray, np.ndarray, QualityScore]]]:
     """
     Score all frames and select the best one.
     
     Frames are stored as (cropped_hires, resized_lowres) tuples.
     Scoring uses resized_lowres, but returns cropped_hires for recognition.
     
+    Args:
+        capture: PersonCapture containing frames
+        skip_start: Number of frames to skip from start (person entering)
+        skip_end: Number of frames to skip from end (person leaving)
+    
     Returns:
         (best_frame_hires, best_frame_lowres, best_score, all_scored_frames)
     """
-    scored = score_frames_dual(capture.frames)
+    # Trim frames from start and end
+    frames = capture.frames
+    total = len(frames)
+    if skip_start + skip_end < total:
+        frames = frames[skip_start:total - skip_end if skip_end > 0 else total]
+        logger.debug(f"Trimmed frames: {total} -> {len(frames)} (skip {skip_start} start, {skip_end} end)")
+    
+    scored = score_frames_dual(frames)
     
     if not scored:
         # Fallback to trigger frame if no faces detected in any frame
@@ -212,7 +224,7 @@ def compute_fused_embedding(
     min_detection_score: float,
     top_n: int = 3,
     weight_power: float = 0.3
-) -> Tuple[Optional[np.ndarray], List[Tuple[float, float, float]], Optional[np.ndarray]]:
+) -> Tuple[Optional[np.ndarray], List[Tuple[float, float, float]], Optional[np.ndarray], Optional[Tuple]]:
     """
     Compute soft-weighted average embedding from top N frames above quality threshold.
     
@@ -224,16 +236,18 @@ def compute_fused_embedding(
         weight_power: Exponent for soft weighting (0.3 = lenient, 1.0 = linear)
     
     Returns:
-        (fused_embedding, fusion_details, best_frame_for_api)
+        (fused_embedding, fusion_details, best_frame_for_api, best_frame_bbox)
         - fused_embedding: Normalized weighted average, or None if no valid frames
         - fusion_details: List of (quality_score, det_score, weight) for each fused frame
         - best_frame_for_api: The lowres frame from the highest-scoring valid frame
+        - best_frame_bbox: The bbox from the same frame (matching coordinates)
     """
     embeddings = []
     weights = []
     det_scores = []
     quality_scores = []
     best_frame_lowres = None
+    best_frame_bbox = None
     
     for idx, frame_hires, frame_lowres, score in scored_frames:
         # Quality gate: skip frames below threshold
@@ -259,16 +273,17 @@ def compute_fused_embedding(
         # Soft weight: score^power dampens quality differences
         weights.append(score.total ** weight_power)
         
-        # Keep first valid frame for API image
+        # Keep first valid frame and its bbox for API image
         if best_frame_lowres is None:
             best_frame_lowres = frame_lowres
+            best_frame_bbox = score.bbox  # Use bbox from same frame
         
         # Stop after top_n valid frames
         if len(embeddings) >= top_n:
             break
     
     if not embeddings:
-        return None, [], None
+        return None, [], None, None
     
     # Normalize weights to sum to 1
     weights = np.array(weights)
@@ -285,7 +300,7 @@ def compute_fused_embedding(
     # Build fusion details for logging
     fusion_details = list(zip(quality_scores, det_scores, weights.tolist()))
     
-    return fused, fusion_details, best_frame_lowres
+    return fused, fusion_details, best_frame_lowres, best_frame_bbox
 
 
 # =============================================================================
@@ -720,7 +735,11 @@ def run_visitor_counter(
             # PHASE 3: Score frames and select best
             # =================================================================
             t0 = time.perf_counter()
-            best_frame_hires, best_frame_lowres, best_score, scored_frames = select_best_frame(capture)
+            best_frame_hires, best_frame_lowres, best_score, scored_frames = select_best_frame(
+                capture,
+                skip_start=cfg.FRAMES_SKIP_START,
+                skip_end=cfg.FRAMES_SKIP_END
+            )
             scoring_time = (time.perf_counter() - t0) * 1000
             timing_stats['scoring'].append(scoring_time)
             session_stats['frames_scored'] += len(scored_frames)
@@ -756,7 +775,7 @@ def run_visitor_counter(
             # Extract embeddings from top N frames (above quality threshold)
             # and compute soft-weighted average for more robust recognition
             t0 = time.perf_counter()
-            fused_embedding, fusion_details, api_frame = compute_fused_embedding(
+            fused_embedding, fusion_details, api_frame, api_bbox = compute_fused_embedding(
                 scored_frames=scored_frames,
                 min_quality_score=min_quality_score,
                 min_detection_score=min_detection_score,
@@ -800,7 +819,7 @@ def run_visitor_counter(
             # Server performs matching and decides new vs returning
             # Use lowres frame for the image upload (smaller file size)
             logger.debug(f"Average detection confidence: {avg_det_score:.3f}")
-            api_response = api.identify(fused_embedding, api_frame, best_score.bbox)
+            api_response = api.identify(fused_embedding, api_frame, api_bbox)
             
             if api_response.success:
                 visitor_id = api_response.customer_id
