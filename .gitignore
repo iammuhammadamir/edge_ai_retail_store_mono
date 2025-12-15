@@ -63,3 +63,4 @@ client/GPU_testing/test_face.jpg
 # Byte-compiled / optimized
 *.pyc
 *.pyo
+.vercel

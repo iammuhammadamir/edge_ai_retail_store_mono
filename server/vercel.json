@@ -3,9 +3,13 @@
   "buildCommand": "npm run build",
   "outputDirectory": "client/dist",
   "functions": {
+    "api/inventory/index.ts": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
     "api/**/*.ts": {
       "memory": 256,
-      "maxDuration": 10
+      "maxDuration": 30
     }
   },
   "rewrites": [

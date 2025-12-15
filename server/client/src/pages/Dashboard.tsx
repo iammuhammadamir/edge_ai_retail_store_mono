@@ -55,6 +55,10 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type {
@@ -1728,128 +1732,189 @@ function InventoryManagement() {
   // State for the new "Add New Item" dialog
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
+  // Category filter state
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  // Get unique categories from inventory
+  const categories = Array.from(
+    new Set(inventory.map((item) => item.category || "Uncategorized"))
+  ).sort();
+
+  // Filter inventory by selected category
+  const filteredInventory = selectedCategory === "all"
+    ? inventory
+    : inventory.filter(
+        (item) => (item.category || "Uncategorized") === selectedCategory
+      );
+
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Inventory</h2>
           <p className="text-muted-foreground">
             Manage stock levels and track expiration dates
           </p>
         </div>
-        <div className="flex gap-2">
-          {/* Assuming InventoryUploadModal is imported and available */}
-          <InventoryUploadModal locationId={currentLocationId} />
+        <div className="flex flex-wrap gap-2">
+          {/* Category Filter */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Filter className="h-4 w-4" />
+                {selectedCategory === "all" ? "All Categories" : selectedCategory}
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-2 bg-white" align="end">
+              <div className="space-y-1">
+                <button
+                  onClick={() => setSelectedCategory("all")}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-muted ${
+                    selectedCategory === "all" ? "bg-accent text-accent-foreground font-medium" : ""
+                  }`}
+                >
+                  All Categories
+                  <Badge variant="secondary" className="ml-2">
+                    {inventory.length}
+                  </Badge>
+                </button>
+                {categories.map((category) => (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedCategory(category)}
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-muted flex items-center justify-between ${
+                      selectedCategory === category ? "bg-accent text-accent-foreground font-medium" : ""
+                    }`}
+                  >
+                    <span>{category}</span>
+                    <Badge variant="outline">
+                      {inventory.filter((i) => (i.category || "Uncategorized") === category).length}
+                    </Badge>
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+          <InventoryUploadModal locationId={currentLocationId ?? 0} />
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="mr-2 h-4 w-4" /> Add New Item
               </Button>
             </DialogTrigger>
-            <DialogContent>
-              {/* Add New Item Form */}
-              <Card className="mb-4" data-testid="card-add-inventory">
-                <CardHeader>
-                  <CardTitle className="text-base">Add New Inventory Item</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">
-                        Item Name *
-                      </label>
-                      <Input
-                        value={newItem.itemName}
-                        onChange={(e) =>
-                          setNewItem({ ...newItem, itemName: e.target.value })
-                        }
-                        placeholder="e.g., Milk (1 Gallon)"
-                        data-testid="input-new-item-name"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">
-                        Batch Number *
-                      </label>
-                      <Input
-                        value={newItem.batchNumber}
-                        onChange={(e) =>
-                          setNewItem({ ...newItem, batchNumber: e.target.value })
-                        }
-                        placeholder="e.g., BATCH-2024-001"
-                        data-testid="input-new-batch-number"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">
-                        Quantity *
-                      </label>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={newItem.quantity}
-                        onChange={(e) =>
-                          setNewItem({ ...newItem, quantity: e.target.value })
-                        }
-                        placeholder="e.g., 24"
-                        data-testid="input-new-quantity"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">
-                        Expiration Date *
-                      </label>
-                      <Input
-                        type="date"
-                        value={newItem.expirationDate}
-                        onChange={(e) =>
-                          setNewItem({ ...newItem, expirationDate: e.target.value })
-                        }
-                        data-testid="input-new-expiration"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">
-                        Category
-                      </label>
-                      <Input
-                        value={newItem.category}
-                        onChange={(e) =>
-                          setNewItem({ ...newItem, category: e.target.value })
-                        }
-                        placeholder="e.g., Dairy"
-                        data-testid="input-new-category"
-                      />
-                    </div>
-                    <div className="flex items-end gap-2">
-                      <Button
-                        onClick={handleAddItem}
-                        disabled={addItemMutation.isPending}
-                        className="flex-1"
-                        data-testid="button-save-new-item"
-                      >
-                        Save Item
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setIsAddDialogOpen(false); // Close dialog instead of setting isAddingNew
-                          setNewItem({
-                            itemName: "",
-                            batchNumber: "",
-                            quantity: "",
-                            expirationDate: "",
-                            category: "",
-                          });
-                        }}
-                        data-testid="button-cancel-new-item"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
+            <DialogContent className="sm:max-w-[600px] bg-white">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5 text-primary" />
+                  Add New Inventory Item
+                </DialogTitle>
+                <DialogDescription>
+                  Fill in the details below to add a new item to your inventory.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4" data-testid="card-add-inventory">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      Item Name <span className="text-destructive">*</span>
+                    </label>
+                    <Input
+                      value={newItem.itemName}
+                      onChange={(e) =>
+                        setNewItem({ ...newItem, itemName: e.target.value })
+                      }
+                      placeholder="e.g., Milk (1 Gallon)"
+                      data-testid="input-new-item-name"
+                    />
                   </div>
-                </CardContent>
-              </Card>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      Batch Number <span className="text-destructive">*</span>
+                    </label>
+                    <Input
+                      value={newItem.batchNumber}
+                      onChange={(e) =>
+                        setNewItem({ ...newItem, batchNumber: e.target.value })
+                      }
+                      placeholder="e.g., BATCH-2024-001"
+                      data-testid="input-new-batch-number"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      Quantity <span className="text-destructive">*</span>
+                    </label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={newItem.quantity}
+                      onChange={(e) =>
+                        setNewItem({ ...newItem, quantity: e.target.value })
+                      }
+                      placeholder="e.g., 24"
+                      data-testid="input-new-quantity"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      Expiration Date <span className="text-destructive">*</span>
+                    </label>
+                    <Input
+                      type="date"
+                      value={newItem.expirationDate}
+                      onChange={(e) =>
+                        setNewItem({ ...newItem, expirationDate: e.target.value })
+                      }
+                      data-testid="input-new-expiration"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Category</label>
+                    <Input
+                      value={newItem.category}
+                      onChange={(e) =>
+                        setNewItem({ ...newItem, category: e.target.value })
+                      }
+                      placeholder="e.g., Dairy"
+                      data-testid="input-new-category"
+                    />
+                  </div>
+                </div>
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsAddDialogOpen(false);
+                    setNewItem({
+                      itemName: "",
+                      batchNumber: "",
+                      quantity: "",
+                      expirationDate: "",
+                      category: "",
+                    });
+                  }}
+                  data-testid="button-cancel-new-item"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    handleAddItem();
+                    if (!addItemMutation.isPending) {
+                      setIsAddDialogOpen(false);
+                    }
+                  }}
+                  disabled={addItemMutation.isPending}
+                  data-testid="button-save-new-item"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {addItemMutation.isPending ? "Saving..." : "Save Item"}
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>
@@ -1981,6 +2046,21 @@ function InventoryManagement() {
             </p>
           </CardContent>
         </Card>
+      ) : filteredInventory.length === 0 ? (
+        <Card>
+          <CardContent className="p-6">
+            <p className="text-center text-muted-foreground">
+              No items found in "{selectedCategory}" category.
+              <Button
+                variant="link"
+                className="px-1"
+                onClick={() => setSelectedCategory("all")}
+              >
+                Show all items
+              </Button>
+            </p>
+          </CardContent>
+        </Card>
       ) : (
         <Card data-testid="card-inventory-table">
           <CardContent className="p-0">
@@ -2010,7 +2090,7 @@ function InventoryManagement() {
                   </tr>
                 </thead>
                 <tbody>
-                  {inventory.map((item) => (
+                  {filteredInventory.map((item) => (
                     <InventoryRow
                       key={item.id}
                       item={item}
