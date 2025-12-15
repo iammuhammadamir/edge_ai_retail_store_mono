@@ -48,16 +48,18 @@ def get_face_analyzer():
         
         os.makedirs(MODEL_DIR, exist_ok=True)
         
+        # Use CPU to prevent OOM on Jetson Orin Nano (shared memory)
+        # GPU works for lightweight YuNet detection, but InsightFace detection/recognition
+        # is too heavy for the remaining memory budget.
         _face_app = FaceAnalysis(
             name=MODEL_NAME,
             root=MODEL_DIR,
-            providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
+            providers=['CPUExecutionProvider']
         )
         
         # det_size affects detection accuracy vs speed
-        # Smaller = faster but may miss small faces
-        # ctx_id=0 uses GPU, ctx_id=-1 uses CPU
-        _face_app.prepare(ctx_id=0, det_size=(640, 640))
+        # ctx_id=-1 uses CPU
+        _face_app.prepare(ctx_id=-1, det_size=(640, 640))
         
         logger.info(f"InsightFace model '{MODEL_NAME}' loaded")
     
