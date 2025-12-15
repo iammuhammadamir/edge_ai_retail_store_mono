@@ -67,11 +67,82 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(405).json({ message: 'Method not allowed' });
     }
 
+    // POST /api/inventory/analyze
+    if (path === 'analyze' && req.method === 'POST') {
+      const { images } = req.body;
+      if (!images || !Array.isArray(images) || images.length === 0) {
+        return res.status(400).json({ message: 'images array required' });
+      }
+
+      // Inline OpenAI analysis to avoid Vercel bundling issues
+      const OpenAI = (await import('openai')).default;
+
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(500).json({ message: 'OPENAI_API_KEY is not configured' });
+      }
+
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      // Prepare messages with images
+      const content: any[] = [
+        {
+          type: "text",
+          text: `Identify the commercial products in these images and count their quantities.
+          Return a STRICT JSON array of objects. Do not include markdown formatting like \`\`\`json.
+          
+          Schema:
+          [
+            {
+              "itemName": "Specific Product Name (e.g. 'Coca-Cola 2L', 'Lays Classic Chip 50g')",
+              "quantity": 5,
+              "category": "Suggested Category (e.g. 'Beverages', 'Snacks')",
+              "confidence": 0.95,
+              "warnings": ["Low visibility", "Partially occluded"]
+            }
+          ]
+
+          Rules:
+          1. Be precise with names. Include brand and size/variant if visible.
+          2. If an item appears in multiple images, try not to double count.
+          3. Ignore non-product background elements.
+          4. Group identical items into a single entry with summed quantity.
+          `,
+        },
+      ];
+
+      // Add images to content
+      for (const base64 of images) {
+        const dataUrl = base64.startsWith("data:image")
+          ? base64
+          : `data:image/jpeg;base64,${base64}`;
+        content.push({
+          type: "image_url",
+          image_url: { url: dataUrl },
+        });
+      }
+
+      try {
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [{ role: "user", content: content }],
+          max_tokens: 1000,
+        });
+
+        const rawContent = response.choices[0].message.content?.trim() || "[]";
+        const jsonString = rawContent.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+        const items = JSON.parse(jsonString);
+        return res.json({ items });
+      } catch (aiError) {
+        console.error("OpenAI Analysis Error:", aiError);
+        return res.status(500).json({ message: 'Failed to analyze images with AI' });
+      }
+    }
+
     // GET/PATCH/DELETE /api/inventory/:id
     const idMatch = path.match(/^(\d+)$/);
     if (idMatch) {
       const itemId = parseInt(idMatch[1]);
-      
+
       if (req.method === 'GET') {
         const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, itemId)).limit(1);
         if (!item) return res.status(404).json({ message: 'Item not found' });
@@ -85,7 +156,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (quantity !== undefined) updates.quantity = quantity;
         if (expirationDate !== undefined) updates.expirationDate = new Date(expirationDate);
         if (category !== undefined) updates.category = category;
-        
+
         const [updated] = await db.update(inventoryItems).set(updates).where(eq(inventoryItems.id, itemId)).returning();
         if (!updated) return res.status(404).json({ message: 'Item not found' });
         return res.json(updated);

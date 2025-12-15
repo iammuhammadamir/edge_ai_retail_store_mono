@@ -52,6 +52,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import type {
   Customer,
   InventoryItem,
@@ -65,6 +70,7 @@ import type {
 import logoImage from "@/assets/logo.png";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
+import { InventoryUploadModal } from "@/components/InventoryUploadModal";
 import { HLSPlayer } from "@/components/HLSPlayer";
 
 type TabView = "video" | "loyalty" | "analytics" | "inventory";
@@ -159,11 +165,10 @@ function LocationSelector() {
                 setCurrentLocationId(location.id);
                 setIsOpen(false);
               }}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm hover-elevate active-elevate-2 ${
-                location.id === currentLocationId
-                  ? "bg-accent text-accent-foreground"
-                  : ""
-              }`}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm hover-elevate active-elevate-2 ${location.id === currentLocationId
+                ? "bg-accent text-accent-foreground"
+                : ""
+                }`}
               data-testid={`button-location-${location.id}`}
             >
               <div className="font-medium">{location.name}</div>
@@ -310,9 +315,8 @@ function NotificationBell() {
                 <button
                   key={notification.id}
                   onClick={() => handleNotificationClick(notification)}
-                  className={`w-full p-4 text-left hover-elevate transition-colors ${
-                    !notification.isRead ? "bg-muted/50" : ""
-                  }`}
+                  className={`w-full p-4 text-left hover-elevate transition-colors ${!notification.isRead ? "bg-muted/50" : ""
+                    }`}
                   data-testid={`notification-${notification.id}`}
                 >
                   <div className="flex items-start gap-3">
@@ -472,7 +476,7 @@ export default function Dashboard() {
           locationId: currentLocationId,
           points: 0,
           lastSeen: new Date(),
-                  }),
+        }),
       });
     },
     onSuccess: () => {
@@ -544,7 +548,7 @@ export default function Dashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cameras", currentLocationId] });
-       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       toast({
         title: "Camera status updated",
         description: "Camera status has been updated successfully.",
@@ -700,7 +704,7 @@ export default function Dashboard() {
             <div>
               <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
                 <h2 className="text-xl font-semibold">
-                  Cameras ({filteredCameras.length}) 
+                  Cameras ({filteredCameras.length})
                 </h2>
 
                 {/* Filter Popover */}
@@ -758,17 +762,16 @@ export default function Dashboard() {
                             >
                               <div className="flex items-center gap-2">
                                 <div
-                                  className={`w-4 h-4 border-2 rounded flex items-center justify-center ${
-                                    cameraStatusFilter.includes(status.value)
-                                      ? "bg-primary border-primary"
-                                      : "border-muted-foreground/30"
-                                  }`}
+                                  className={`w-4 h-4 border-2 rounded flex items-center justify-center ${cameraStatusFilter.includes(status.value)
+                                    ? "bg-primary border-primary"
+                                    : "border-muted-foreground/30"
+                                    }`}
                                 >
                                   {cameraStatusFilter.includes(
                                     status.value,
                                   ) && (
-                                    <Check className="h-3 w-3 text-primary-foreground" />
-                                  )}
+                                      <Check className="h-3 w-3 text-primary-foreground" />
+                                    )}
                                 </div>
                                 <span className="text-sm">{status.label}</span>
                               </div>
@@ -838,11 +841,10 @@ export default function Dashboard() {
                     return (
                       <Card
                         key={camera.id}
-                        className={`cursor-pointer hover-elevate ${
-                          selectedCamera?.id === camera.id
-                            ? "border-primary border-2"
-                            : ""
-                        }`}
+                        className={`cursor-pointer hover-elevate ${selectedCamera?.id === camera.id
+                          ? "border-primary border-2"
+                          : ""
+                          }`}
                         onClick={() => {
                           console.log("clicked");
                           setSelectedCamera(camera);
@@ -967,13 +969,13 @@ export default function Dashboard() {
         {activeTab === "loyalty" && (
           <div>
             <div className="flex justify-between items-center mb-4" >
-          
-            <h2
-              className="text-xl font-semibold "
-              data-testid="text-customers-heading"
-            >
-              Customer Recognition & Loyalty Program
-            </h2>
+
+              <h2
+                className="text-xl font-semibold "
+                data-testid="text-customers-heading"
+              >
+                Customer Recognition & Loyalty Program
+              </h2>
 
               {user.role === "manager" && (
                 <Button
@@ -985,7 +987,7 @@ export default function Dashboard() {
                 </Button>
               )}
 
-              </div>
+            </div>
 
 
             {showAddForm && (
@@ -1167,7 +1169,7 @@ function AnalyticsDashboard({
   const expiringSoonCount = inventory.filter((item) => {
     const daysUntilExpiration = Math.floor(
       (new Date(item.expirationDate).getTime() - Date.now()) /
-        (1000 * 60 * 60 * 24),
+      (1000 * 60 * 60 * 24),
     );
     return daysUntilExpiration <= 7 && daysUntilExpiration >= 0;
   }).length;
@@ -1380,9 +1382,9 @@ function AnalyticsDashboard({
                   >
                     {customers.length > 0
                       ? (
-                          customers.reduce((sum, c) => sum + c.points, 0) /
-                          customers.length
-                        ).toFixed(1)
+                        customers.reduce((sum, c) => sum + c.points, 0) /
+                        customers.length
+                      ).toFixed(1)
                       : "0"}
                   </button>
                 </div>
@@ -1723,26 +1725,138 @@ function InventoryManagement() {
     return new Date(expirationDate).getTime() < Date.now();
   };
 
+  // State for the new "Add New Item" dialog
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2
-          className="text-xl font-semibold"
-          data-testid="text-inventory-heading"
-        >
-          Store Inventory Management
-        </h2>
-        <Button
-          onClick={() => setIsAddingNew(!isAddingNew)}
-          data-testid="button-add-inventory"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add New Item
-        </Button>
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Inventory</h2>
+          <p className="text-muted-foreground">
+            Manage stock levels and track expiration dates
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {/* Assuming InventoryUploadModal is imported and available */}
+          <InventoryUploadModal locationId={currentLocationId} />
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" /> Add New Item
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              {/* Add New Item Form */}
+              <Card className="mb-4" data-testid="card-add-inventory">
+                <CardHeader>
+                  <CardTitle className="text-base">Add New Inventory Item</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">
+                        Item Name *
+                      </label>
+                      <Input
+                        value={newItem.itemName}
+                        onChange={(e) =>
+                          setNewItem({ ...newItem, itemName: e.target.value })
+                        }
+                        placeholder="e.g., Milk (1 Gallon)"
+                        data-testid="input-new-item-name"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">
+                        Batch Number *
+                      </label>
+                      <Input
+                        value={newItem.batchNumber}
+                        onChange={(e) =>
+                          setNewItem({ ...newItem, batchNumber: e.target.value })
+                        }
+                        placeholder="e.g., BATCH-2024-001"
+                        data-testid="input-new-batch-number"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">
+                        Quantity *
+                      </label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={newItem.quantity}
+                        onChange={(e) =>
+                          setNewItem({ ...newItem, quantity: e.target.value })
+                        }
+                        placeholder="e.g., 24"
+                        data-testid="input-new-quantity"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">
+                        Expiration Date *
+                      </label>
+                      <Input
+                        type="date"
+                        value={newItem.expirationDate}
+                        onChange={(e) =>
+                          setNewItem({ ...newItem, expirationDate: e.target.value })
+                        }
+                        data-testid="input-new-expiration"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">
+                        Category
+                      </label>
+                      <Input
+                        value={newItem.category}
+                        onChange={(e) =>
+                          setNewItem({ ...newItem, category: e.target.value })
+                        }
+                        placeholder="e.g., Dairy"
+                        data-testid="input-new-category"
+                      />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <Button
+                        onClick={handleAddItem}
+                        disabled={addItemMutation.isPending}
+                        className="flex-1"
+                        data-testid="button-save-new-item"
+                      >
+                        Save Item
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsAddDialogOpen(false); // Close dialog instead of setting isAddingNew
+                          setNewItem({
+                            itemName: "",
+                            batchNumber: "",
+                            quantity: "",
+                            expirationDate: "",
+                            category: "",
+                          });
+                        }}
+                        data-testid="button-cancel-new-item"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
-      {/* Add New Item Form */}
-      {isAddingNew && (
+      {/* The original `isAddingNew` conditional rendering is replaced by the Dialog */}
+      {/* {isAddingNew && (
         <Card className="mb-4" data-testid="card-add-inventory">
           <CardHeader>
             <CardTitle className="text-base">Add New Inventory Item</CardTitle>
@@ -2281,7 +2395,7 @@ function CustomerCard({
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </AlertDialogTrigger>
-                <AlertDialogContent style={{backgroundColor:"white"}}>
+                <AlertDialogContent style={{ backgroundColor: "white" }}>
                   <AlertDialogHeader>
                     <AlertDialogTitle>Delete Customer</AlertDialogTitle>
                     <AlertDialogDescription>
@@ -2297,7 +2411,7 @@ function CustomerCard({
                       disabled={deleteCustomerMutation.isPending}
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       data-testid={`button-confirm-delete-${customer.id}`}
-                      style={{backgroundColor:"red",color:"white"}}
+                      style={{ backgroundColor: "red", color: "white" }}
                     >
                       {deleteCustomerMutation.isPending ? "Deleting..." : "Delete"}
                     </AlertDialogAction>

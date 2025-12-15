@@ -40,7 +40,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
     }
     return res.status(401).json({ message: "Invalid or expired token." });
   }
-  
+
   // Fall back to session (for backward compatibility during migration)
   if (req.session?.user) {
     req.user = {
@@ -50,7 +50,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
     };
     return next();
   }
-  
+
   return res.status(401).json({ message: "Authentication required." });
 }
 
@@ -69,7 +69,7 @@ function ownerOnly(req: Request, res: Response, next: NextFunction) {
     }
     return res.status(401).json({ message: "Invalid or expired token." });
   }
-  
+
   // Fall back to session
   if (req.session?.user) {
     req.user = {
@@ -82,7 +82,7 @@ function ownerOnly(req: Request, res: Response, next: NextFunction) {
     }
     return next();
   }
-  
+
   return res.status(401).json({ message: "Authentication required." });
 }
 
@@ -100,7 +100,7 @@ function ownerAndReviewerOnly(req: Request, res: Response, next: NextFunction) {
     }
     return res.status(401).json({ message: "Invalid or expired token." });
   }
-  
+
   // Fall back to session
   if (req.session?.user) {
     req.user = {
@@ -113,7 +113,7 @@ function ownerAndReviewerOnly(req: Request, res: Response, next: NextFunction) {
     }
     return next();
   }
-  
+
   return res.status(401).json({ message: "Authentication required." });
 }
 
@@ -195,14 +195,14 @@ function trackFailedAttempt(ip: string): number {
 function getFailedAttemptCount(ip: string): number {
   const record = failedLoginAttempts.get(ip);
   if (!record) return 0;
-  
+
   const now = Date.now();
   if ((now - record.lastAttempt) >= ATTEMPT_WINDOW_MS) {
     // Attempts have expired
     failedLoginAttempts.delete(ip);
     return 0;
   }
-  
+
   return record.count;
 }
 
@@ -222,7 +222,7 @@ export function registerRoutes(app: Application, storage: IStorage) {
       if (!captchaToken) {
         // Track this as a failed attempt to prevent bypass
         trackFailedAttempt(clientIP);
-        return res.status(400).json({ 
+        return res.status(400).json({
           message: "CAPTCHA verification required after multiple failed attempts.",
           requiresCaptcha: true,
         });
@@ -232,7 +232,7 @@ export function registerRoutes(app: Application, storage: IStorage) {
       if (!captchaValid) {
         // Track this as a failed attempt to prevent bypass
         trackFailedAttempt(clientIP);
-        return res.status(400).json({ 
+        return res.status(400).json({
           message: "CAPTCHA verification failed. Please try again.",
           requiresCaptcha: true,
         });
@@ -244,8 +244,8 @@ export function registerRoutes(app: Application, storage: IStorage) {
     if (!user || user.password !== password) {
       // Track failed attempt
       const newCount = trackFailedAttempt(clientIP);
-      
-      return res.status(401).json({ 
+
+      return res.status(401).json({
         message: "Invalid credentials",
         requiresCaptcha: newCount >= FAILED_ATTEMPTS_THRESHOLD,
       });
@@ -272,7 +272,7 @@ export function registerRoutes(app: Application, storage: IStorage) {
           role: user.role as "owner" | "manager" | "reviewer",
           locationId: user.locationId ?? undefined,
         };
-        req.session.save(() => {}); // Fire and forget
+        req.session.save(() => { }); // Fire and forget
       }
 
       // Return JWT token and user data
@@ -298,12 +298,12 @@ export function registerRoutes(app: Application, storage: IStorage) {
       }
       return res.status(401).json({ message: "Invalid or expired token" });
     }
-    
+
     // Fall back to session
     if (req.session?.user) {
       return res.json(req.session.user);
     }
-    
+
     return res.status(401).json({ message: "Not authenticated" });
   });
 
@@ -311,7 +311,7 @@ export function registerRoutes(app: Application, storage: IStorage) {
   app.post("/api/auth/logout", (req, res) => {
     // Clear session if exists
     if (req.session) {
-      req.session.destroy(() => {});
+      req.session.destroy(() => { });
     }
     res.clearCookie("connect.sid");
     // JWT is stateless - client must discard it
@@ -461,7 +461,7 @@ export function registerRoutes(app: Application, storage: IStorage) {
       : undefined;
 
     const allReviews = await storage.getAllReviews();
-    
+
     // Filter to only camera reviews (where cameraId is set)
     const cameraReviews = allReviews.filter((r) => r.cameraId != null);
 
@@ -472,7 +472,7 @@ export function registerRoutes(app: Application, storage: IStorage) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      if (!user.locationId)  {
+      if (!user.locationId) {
         return res
           .status(403)
           .json({ message: "User has no assigned location" });
@@ -794,6 +794,28 @@ export function registerRoutes(app: Application, storage: IStorage) {
     }
   });
 
+  // ===== Inventory Image Analysis (AI-powered) =====
+  app.post("/api/inventory/analyze", requireAuth, async (req, res) => {
+    try {
+      const { images } = req.body;
+
+      if (!images || !Array.isArray(images) || images.length === 0) {
+        return res.status(400).json({ message: "No images provided. Please provide an array of base64 image strings." });
+      }
+
+      // Dynamically import the OpenAI analysis function
+      const { analyzeInventoryImages } = await import("./openai");
+      const results = await analyzeInventoryImages(images);
+
+      res.json({ items: results });
+    } catch (error) {
+      console.error("Inventory image analysis error:", error);
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Failed to analyze images",
+      });
+    }
+  });
+
   app.patch("/api/inventory/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -1038,7 +1060,7 @@ export function registerRoutes(app: Application, storage: IStorage) {
       const id = parseInt(req.params.id);
       const { status } = req.body;
       const username = req.user!.username;
-      
+
       // Validate status
       const validStatuses = ["pending", "suspect", "confirmed_theft", "clear"];
       if (!validStatuses.includes(status)) {

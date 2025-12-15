@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -61,7 +62,7 @@ app.use(cors({
   origin: isDevelopment ? true : process.env.FRONTEND_URL || true,
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Session middleware with PostgreSQL store
@@ -120,19 +121,19 @@ registerEdgeRoutes(app, storage);
 async function initializeDefaultLocations() {
   // Create locations first (needed for manager assignments)
   const locations = await storage.getAllLocations();
-  
+
   if (locations.length === 0) {
     console.log("Creating default locations...");
     const mainSt = await storage.createLocation({
       name: "Main St",
     });
     console.log("Created Main St location with ID:", mainSt.id);
-    
+
     const pedroSt = await storage.createLocation({
       name: "Pedro St",
     });
     console.log("Created Pedro St location with ID:", pedroSt.id);
-    
+
     return { mainStId: mainSt.id, pedroStId: pedroSt.id };
   } else if (locations.length === 1) {
     const pedroSt = await storage.createLocation({
@@ -140,7 +141,7 @@ async function initializeDefaultLocations() {
     });
     return { mainStId: locations[0].id, pedroStId: pedroSt.id };
   }
-  
+
   // Locations already exist
   return { mainStId: locations[0].id, pedroStId: locations[1].id };
 }
@@ -242,7 +243,7 @@ if (!process.env.VERCEL) {
     console.log(`Environment: ${isDevelopment ? "development" : "production"}`);
     console.log("Health checks ready at /health and /");
     console.log("API routes registered and ready");
-    
+
     // Fire-and-forget database initialization (doesn't block health checks)
     void initializeDatabase().catch((error) => {
       console.error("Background database initialization failed:", error);
