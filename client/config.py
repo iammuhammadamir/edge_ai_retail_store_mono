@@ -21,15 +21,15 @@ PROCESS_EVERY_N_FRAMES: int = 5  # Skip frames for performance (~3 FPS from 15 F
 # FRAME QUALITY CAPTURE SETTINGS
 # =============================================================================
 
-QUALITY_CAPTURE_DURATION_SEC: float = 5.0  # How long to capture after face detected
-QUALITY_FRAME_SKIP: int = 3  # Keep every Nth frame during capture
+QUALITY_CAPTURE_DURATION_SEC: float = 0.8 # How long to capture after face detected
+QUALITY_FRAME_SKIP: int = 1  # Keep every Nth frame during capture
 QUALITY_TOP_N_FRAMES: int = 5  # Number of top frames to show in debug output
 
 # Frame trimming - skip frames from start/end of capture sequence
 # Useful because first frames (person entering) and last frames (person leaving)
 # are often lower quality
 FRAMES_SKIP_START: int = 1  # Skip first N frames before scoring
-FRAMES_SKIP_END: int = 3    # Skip last N frames before scoring
+FRAMES_SKIP_END: int = 10    # Skip last N frames before scoring
 
 # Quality scoring - Multiplicative penalty system
 # Each factor independently impacts the score via: score × factor^(importance/5)
@@ -160,6 +160,11 @@ DEBUG_OUTPUT_DIR: str = "debug_output"  # Directory for debug files
 DEBUG_SAVE_ALL_FRAMES: bool = False  # Save all captured frames (disk intensive)
 DEBUG_SAVE_TOP_FRAMES: bool = True  # Save top N frames with scores
 DEBUG_GENERATE_REPORT: bool = True  # Generate debug.md report
+
+# Debug frame stream saving - saves ALL frames from each capture session
+# Useful for analyzing which time-window of frames yields best recognition results
+DEBUG_FRAMES_OUTPUT_DIR: str = "/home/mafiq/zmisc/debug_frames"  # Directory for frame streams
+DEBUG_SAVE_FRAME_STREAM: bool = True  # Save all frames when debug mode is on
 
 # =============================================================================
 # LOGGING

@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-Face Detection with Frame Capture
-Detects faces in RTSP stream and saves 5 frames when a person appears.
-Uses OpenCV's YuNet face detector (fast, built-in).
-"""
 
 import cv2
 import time

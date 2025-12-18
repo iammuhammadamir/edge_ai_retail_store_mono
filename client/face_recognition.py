@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-Face Recognition Module
-Extracts face embeddings and matches against known visitors.
-Uses InsightFace with buffalo_s/buffalo_l model (ArcFace).
-"""
 
 import cv2
 import numpy as np

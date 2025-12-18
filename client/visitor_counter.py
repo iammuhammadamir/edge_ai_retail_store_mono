@@ -515,6 +515,119 @@ Frontality:
         cv2.imwrite(best_path, best_annotated)
         logger.debug(f"Best frame saved: {best_path}")
 
+
+def save_debug_frame_stream(
+    capture: PersonCapture,
+    visitor_result: str,
+    visitor_id: int,
+    scored_frames: List[Tuple[int, np.ndarray, np.ndarray, 'QualityScore']] = None
+) -> None:
+    """
+    Save ALL captured frames to disk for later analysis.
+    
+    This saves every frame from the capture session with timestamps,
+    allowing analysis of which time-window yields best recognition results.
+    
+    Folder structure:
+        {DEBUG_FRAMES_OUTPUT_DIR}/{session_id}_{result}_{visitor_id}/
+            frame_000_0000ms.jpg
+            frame_001_0100ms.jpg
+            ...
+            metadata.json
+    
+    Args:
+        capture: PersonCapture with all frames
+        visitor_result: Result string (NEW, RETURNING, LOW_QUALITY, etc.)
+        visitor_id: Visitor ID if identified
+        scored_frames: Optional list of scored frames for metadata
+    """
+    if not cfg.DEBUG_MODE or not cfg.DEBUG_SAVE_FRAME_STREAM:
+        return
+    
+    import json
+    from concurrent.futures import ThreadPoolExecutor
+    
+    # Create session folder
+    folder_name = f"{capture.session_id}_{visitor_result}_{visitor_id}"
+    session_dir = os.path.join(cfg.DEBUG_FRAMES_OUTPUT_DIR, folder_name)
+    os.makedirs(session_dir, exist_ok=True)
+    
+    # Calculate frame timestamps (relative to capture start)
+    capture_duration = cfg.QUALITY_CAPTURE_DURATION_SEC
+    frame_count = len(capture.frames)
+    
+    # Estimate time per frame based on capture duration and frame count
+    # First frame is trigger (t=0), rest are spread over duration
+    if frame_count > 1:
+        time_per_frame_ms = (capture_duration * 1000) / (frame_count - 1)
+    else:
+        time_per_frame_ms = 0
+    
+    def save_single_frame(args):
+        """Save a single frame (for parallel execution)."""
+        idx, frame_data, timestamp_ms = args
+        
+        # Handle both tuple (hires, lowres) and single frame formats
+        if isinstance(frame_data, tuple):
+            frame_hires, frame_lowres = frame_data
+        else:
+            frame_hires = frame_data
+            frame_lowres = frame_data
+        
+        # Save high-res version for analysis
+        filename = f"frame_{idx:03d}_{int(timestamp_ms):04d}ms.jpg"
+        filepath = os.path.join(session_dir, filename)
+        cv2.imwrite(filepath, frame_hires)
+        return filename
+    
+    # Prepare frame data with timestamps
+    frame_tasks = []
+    for idx, frame_data in enumerate(capture.frames):
+        timestamp_ms = idx * time_per_frame_ms
+        frame_tasks.append((idx, frame_data, timestamp_ms))
+    
+    # Save frames in parallel (non-blocking I/O)
+    saved_files = []
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        saved_files = list(executor.map(save_single_frame, frame_tasks))
+    
+    # Build metadata
+    metadata = {
+        "session_id": capture.session_id,
+        "visitor_result": visitor_result,
+        "visitor_id": visitor_id,
+        "capture_start_time": datetime.fromtimestamp(capture.start_time).isoformat(),
+        "capture_duration_sec": capture_duration,
+        "total_frames": frame_count,
+        "estimated_fps": frame_count / capture_duration if capture_duration > 0 else 0,
+        "frame_skip": cfg.QUALITY_FRAME_SKIP,
+        "frames_skip_start": cfg.FRAMES_SKIP_START,
+        "frames_skip_end": cfg.FRAMES_SKIP_END,
+        "files": saved_files,
+    }
+    
+    # Add quality scores if available
+    if scored_frames:
+        metadata["scored_frames"] = [
+            {
+                "frame_idx": idx,
+                "quality_score": score.total,
+                "frontality": score.frontality,
+                "face_size": score.face_size,
+                "yaw": score.yaw,
+                "pitch": score.pitch,
+            }
+            for idx, _, _, score in scored_frames
+        ]
+    
+    # Save metadata
+    metadata_path = os.path.join(session_dir, "metadata.json")
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
+    logger.info(f"Debug frames saved: {session_dir} ({frame_count} frames)")
+
+
 # =============================================================================
 # MAIN LOOP
 # =============================================================================
@@ -765,6 +878,12 @@ def run_visitor_counter(
                         det_score=None,
                         api_sent=False
                     )
+                    save_debug_frame_stream(
+                        capture=capture,
+                        visitor_result="LOW_QUALITY",
+                        visitor_id=0,
+                        scored_frames=scored_frames
+                    )
                 
                 last_capture_time = time.time()
                 continue
@@ -797,6 +916,12 @@ def run_visitor_counter(
                         visitor_id=0,
                         det_score=None,
                         api_sent=False
+                    )
+                    save_debug_frame_stream(
+                        capture=capture,
+                        visitor_result="NO_VALID_FRAMES",
+                        visitor_id=0,
+                        scored_frames=scored_frames
                     )
                 
                 last_capture_time = time.time()
@@ -850,6 +975,12 @@ def run_visitor_counter(
                 visitor_id=visitor_id,
                 det_score=avg_det_score,
                 api_sent=True
+            )
+            save_debug_frame_stream(
+                capture=capture,
+                visitor_result=visitor_result,
+                visitor_id=visitor_id,
+                scored_frames=scored_frames
             )
             
             # Update cooldown
